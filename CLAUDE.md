@@ -136,7 +136,9 @@ Deployable as a static site via GitHub Pages.
 
 **Live site:** https://fcistar.org (custom domain, purchased March 2026, registered for 5 years)
 
-**Hosting:** GitHub Pages from the repo https://github.com/alp-simsek/fcistar
+**GitHub repo:** https://github.com/alp-simsek/fcistar
+
+**Hosting:** GitHub Pages from the repo above
 
 **Auto-update mechanism:** GitHub Actions cron job runs Kentaro's Python pipeline on a
 schedule (e.g., weekly or quarterly), commits updated output files to the repo, and GitHub
@@ -144,6 +146,11 @@ Pages redeploys automatically.
 
 **DNS:** Namecheap → GitHub Pages (to be configured once the site is ready to go live).
 GitHub handles HTTPS automatically via Let's Encrypt.
+
+**Working from a new machine:** Clone with:
+`git clone https://alp-simsek:YOUR_TOKEN@github.com/alp-simsek/fcistar.git`
+Then set identity: `git config --global user.name "Alp Simsek"` and `git config --global user.email "alp.simsek@yale.edu"`.
+Token is stored in the remote URL in `.git/config` — valid from any machine.
 
 ---
 
