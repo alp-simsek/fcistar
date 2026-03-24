@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+
+# Matlab / EViews temp files
+*.asv
+*.~f1
+
+# Data (raw data is never committed)
+backend/data/raw/
