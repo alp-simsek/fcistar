@@ -1,0 +1,59 @@
+# =============================================================
+# Deploy to GitHub Pages
+#
+# Triggers on every push to main. Assembles frontend/src/ and
+# backend/data/output/ into a single deployment directory,
+# then publishes it as a GitHub Pages site.
+# =============================================================
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+# Required permissions for the official GitHub Pages deploy actions
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/data
+
+          # Copy frontend source files
+          cp frontend/src/index.html _site/
+          cp frontend/src/style.css  _site/
+          cp frontend/src/main.js    _site/
+
+          # Copy data files into a data/ subfolder
+          cp backend/data/output/fcistar.csv   _site/data/
+          cp backend/data/output/metadata.json _site/data/
+
+          # Rewrite data paths: local dev uses ../../backend/data/output/
+          # production uses data/ (relative to site root)
+          sed -i "s|../../backend/data/output/|data/|g" _site/main.js
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
