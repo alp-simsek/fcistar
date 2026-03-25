@@ -79,6 +79,10 @@ header .subtitle {
   line-height: 1.7;
   max-width: 700px;
   opacity: 0.92;
+  margin-bottom: 12px;
+}
+
+header .subtitle:last-of-type {
   margin-bottom: 20px;
 }
 
