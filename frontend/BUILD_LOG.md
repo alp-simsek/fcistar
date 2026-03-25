@@ -24,3 +24,19 @@ Created `src/style.css` with sections:
 
 **Key concept:** CSS rules are "selector { property: value }". Browsers apply their own
 defaults before your CSS — the reset section overrides the worst of these for consistency.
+
+## Step 3 — JavaScript: data loading and charts (2026-03-24)
+
+Created `src/main.js`:
+- `parseCSV()`: manual CSV parser (no library needed for our simple format)
+- `formatDate()`: converts "2026-03-24" → "March 2026" for the header
+- `zeroLine()`: Plotly shape for the dashed zero reference line on each chart
+- `baseLayout()`: shared Plotly layout defaults (colors, font, axes, hover mode)
+- `drawCharts()`: builds all three Plotly charts from parsed data arrays
+- `Promise.all([fetch(CSV), fetch(JSON)])`: loads both files in parallel, then renders
+
+**Key concept:** `fetch()` is blocked on file:// protocol. To develop locally, run:
+  `python3 -m http.server 8000` from repo root, then open
+  `http://localhost:8000/frontend/src/`
+
+**Data path:** `../../backend/data/output/` (relative to frontend/src/)
