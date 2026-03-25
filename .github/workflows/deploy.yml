@@ -45,7 +45,7 @@ jobs:
 
           # Rewrite data paths: local dev uses ../../backend/data/output/
           # production uses data/ (relative to site root)
-          sed -i "s|../../backend/data/output/|data/|g" _site/main.js
+          sed -i "s|../../backend/data/output/|data/|g" _site/main.js _site/index.html
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v4
