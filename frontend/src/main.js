@@ -128,7 +128,7 @@ function drawCharts(data) {
       hovertemplate: '%{y:.2f}<extra>FCI*</extra>'
     }
   ], {
-    ...baseLayout('Pct. pts. of GDP growth'),
+    ...baseLayout('Pct. pts. of next-year GDP growth'),
     shapes: [zeroLine()]
   }, config);
 
@@ -142,7 +142,7 @@ function drawCharts(data) {
       hovertemplate: '%{y:.2f}<extra>FCI gap</extra>'
     }
   ], {
-    ...baseLayout('Pct. pts. of GDP growth'),
+    ...baseLayout('Pct. pts. of next-year GDP growth'),
     shapes: [zeroLine()]
   }, config);
 
