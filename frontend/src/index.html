@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FCI* — The Neutral Financial Conditions Index</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Plotly.js: loaded from CDN, no install needed -->
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+
+<body>
+
+  <!-- ============================================================
+       HEADER
+       ============================================================ -->
+  <header>
+    <div class="container">
+      <h1>FCI<span class="star">*</span></h1>
+      <p class="subtitle">
+        The neutral level of financial conditions consistent with output at potential.
+        FCI<span class="star">*</span> is the financial-conditions analog of r<span class="star">*</span>:
+        insulated from financial market fluctuations, it provides real-time guidance on monetary policy stance.
+      </p>
+      <p class="last-updated">Last updated: <span id="last-updated-date">—</span></p>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       CHARTS
+       ============================================================ -->
+  <main>
+    <div class="container">
+
+      <!-- Chart 1: FCI gap (the headline number) -->
+      <section class="chart-section">
+        <h2>Financial Conditions Gap (FCI &minus; FCI<span class="star">*</span>)</h2>
+        <p class="chart-description">
+          The gap between observed financial conditions and their neutral level.
+          A positive reading means financial conditions are <strong>tighter than neutral</strong>
+          — restraining GDP growth. A negative reading means conditions are
+          <strong>looser than neutral</strong> — boosting GDP growth.
+          Units are percentage points of next-year GDP growth: a gap of +1 implies financial
+          conditions are on track to reduce GDP growth by approximately 1 percentage point
+          relative to neutral.
+        </p>
+        <div id="chart-fci-gap"></div>
+      </section>
+
+      <!-- Chart 2: FCI and FCI* together -->
+      <section class="chart-section">
+        <h2>FCI and FCI<span class="star">*</span></h2>
+        <p class="chart-description">
+          FCI<span class="star">*</span> (our estimate) and the underlying FCI series it is based on.
+          FCI measures the tightening impulse of recent financial conditions on GDP growth:
+          higher values mean tighter conditions, lower values mean looser conditions.
+          FCI<span class="star">*</span> is the neutral level consistent with output at potential —
+          insulated from financial market fluctuations such as changes in risk premiums or investor sentiment.
+          The FCI series shown is the
+          <a href="https://www.federalreserve.gov/econres/notes/feds-notes/a-new-index-to-measure-us-financial-conditions-20230630.html" target="_blank">FCI-G baseline index (3-year lookback)</a>
+          from Ajello et al. (2023).
+        </p>
+        <div id="chart-fci-and-star"></div>
+      </section>
+
+      <!-- Chart 3: Output gap -->
+      <section class="chart-section">
+        <h2>Output Gap</h2>
+        <p class="chart-description">
+          One-sided (real-time) estimate of the output gap — GDP relative to potential, in percent.
+          Positive values indicate an overheating economy; negative values indicate slack.
+        </p>
+        <div id="chart-ygap"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- ============================================================
+       FOOTER
+       ============================================================ -->
+  <footer>
+    <div class="container">
+      <p>
+        <a href="../../backend/data/output/fcistar.csv" download>Download data (CSV)</a>
+        &nbsp;·&nbsp;
+        <a href="https://www.dropbox.com/scl/fi/shsk0nk2gv1hf0aknwuo9/FCIstarPublic.pdf?rlkey=3y9baf5jiqujfglwu83yjkolr&e=1&dl=0" target="_blank">Read the paper</a>
+        &nbsp;·&nbsp;
+        <a href="https://www.federalreserve.gov/econres/notes/feds-notes/a-new-index-to-measure-us-financial-conditions-20230630.html" target="_blank">About FCI-G</a>
+      </p>
+      <p class="footer-note">
+        Caballero, Caravello, and Simsek. FCI-G baseline index (3-year lookback) from Ajello et al. (2023).
+      </p>
+    </div>
+  </footer>
+
+  <!-- main.js: loads the data and draws the charts -->
+  <script src="main.js"></script>
+
+</body>
+</html>
