@@ -37,6 +37,7 @@ jobs:
           cp frontend/src/index.html _site/
           cp frontend/src/style.css  _site/
           cp frontend/src/main.js    _site/
+          cp frontend/src/CNAME      _site/
 
           # Copy data files into a data/ subfolder
           cp backend/data/output/fcistar.csv   _site/data/
