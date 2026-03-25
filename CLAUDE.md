@@ -160,9 +160,9 @@ The backend delivers exactly two files to `backend/data/output/`:
 
 **`fcistar.csv`** — one row per time period, columns:
 ```
-date, fci, fcistar, fci_gap, fcistar_upper, fcistar_lower
+date, fci, fcistar, fci_gap, y_gap
 ```
-(dates in YYYY-MM-DD format; confidence bands for FCI\*)
+(dates in YYYY-MM-DD format; `fci_gap` = FCI minus FCI\*)
 
 **`metadata.json`** — pipeline run information:
 ```json

@@ -13,9 +13,9 @@ Automated pipeline that pulls live data, runs the FCI* estimation, and writes st
 
 **`data/output/fcistar.csv`** — one row per quarter:
 ```
-date, fci, fcistar, fci_gap, fcistar_upper, fcistar_lower
+date, fci, fcistar, fci_gap, y_gap
 ```
-Dates in YYYY-MM-DD format. Confidence bands are for FCI*.
+Dates in YYYY-MM-DD format. `fci_gap` = FCI minus FCI*.
 
 **`data/output/metadata.json`**:
 ```json

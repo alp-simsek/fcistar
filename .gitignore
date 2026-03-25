@@ -16,3 +16,6 @@ venv/
 
 # Data (raw data is never committed)
 backend/data/raw/
+
+# Source Excel files in output/ (only the derived CSV/JSON are committed)
+backend/data/output/*.xlsx
