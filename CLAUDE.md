@@ -140,9 +140,15 @@ Deployable as a static site via GitHub Pages.
 
 **Hosting:** GitHub Pages from the repo above
 
-**Auto-update mechanism:** GitHub Actions cron job runs Kentaro's Python pipeline on a
-schedule (e.g., weekly or quarterly), commits updated output files to the repo, and GitHub
-Pages redeploys automatically.
+**Deployment workflow:** `.github/workflows/deploy.yml` runs on every push to main.
+It assembles a `_site/` directory by copying `frontend/src/` files and
+`backend/data/output/` data files, rewrites data paths for production, then deploys
+to GitHub Pages. **If the folder structure changes (frontend or backend), update the
+"Assemble site" step in the workflow accordingly.**
+
+**Auto-update mechanism (future):** GitHub Actions cron job runs Kentaro's Python pipeline on a
+schedule (e.g., weekly or quarterly), commits updated output files to the repo, and the
+deployment workflow redeploys automatically.
 
 **DNS:** Namecheap → GitHub Pages (to be configured once the site is ready to go live).
 GitHub handles HTTPS automatically via Let's Encrypt.

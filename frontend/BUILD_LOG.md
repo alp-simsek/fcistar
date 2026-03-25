@@ -40,3 +40,19 @@ Created `src/main.js`:
   `http://localhost:8000/frontend/src/`
 
 **Data path:** `../../backend/data/output/` (relative to frontend/src/)
+
+## Step 4 — GitHub Pages deployment (2026-03-24)
+
+Created `.github/workflows/deploy.yml`. On every push to main, the workflow:
+1. Copies `frontend/src/index.html`, `style.css`, `main.js`, `CNAME` → `_site/`
+2. Copies `backend/data/output/fcistar.csv` and `metadata.json` → `_site/data/`
+3. Rewrites data paths in `main.js`: `../../backend/data/output/` → `data/`
+   (local dev uses the long relative path; production uses `data/`)
+4. Deploys `_site/` to GitHub Pages via official actions
+
+Site live at: https://alp-simsek.github.io/fcistar/
+Custom domain (pending DNS): https://fcistar.org
+
+**If folder structure changes:** The workflow hardcodes paths to `frontend/src/` and
+`backend/data/output/`. Any restructuring requires updating the "Assemble site" step
+in `.github/workflows/deploy.yml`.
