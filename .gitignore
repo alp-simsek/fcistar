@@ -19,3 +19,6 @@ backend/data/raw/
 
 # Source Excel files in output/ (only the derived CSV/JSON are committed)
 backend/data/output/*.xlsx
+
+# Internal build log (personal notes, not for the repo)
+frontend/BUILD_LOG.md
