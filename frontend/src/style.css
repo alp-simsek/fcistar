@@ -86,6 +86,28 @@ header .subtitle:last-of-type {
   margin-bottom: 20px;
 }
 
+header .header-authors {
+  font-size: 0.95rem;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  opacity: 0.85;
+  margin-bottom: 10px;
+}
+
+header .header-links {
+  font-size: 0.9rem;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  margin-bottom: 16px;
+}
+
+header .header-links a {
+  color: #c8d8f0;
+}
+
+header .header-links a:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
 header .last-updated {
   font-size: 0.85rem;
   font-family: 'Helvetica Neue', Arial, sans-serif;
