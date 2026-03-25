@@ -116,17 +116,25 @@ a cleaner layout, and room to add series over time.
 **Stack:** Plain HTML/CSS/JS + **Plotly.js** for charts. No build step, no framework.
 Deployable as a static site via GitHub Pages.
 
-**Charts should show at minimum:**
-- FCI\* over time
-- FCI over time
-- FCI gap (FCI minus FCI\*) — the policy stance indicator
+**Charts currently live:**
+- FCI and FCI\* (quarterly)
+- FCI gap (FCI minus FCI\*)
+- Output gap
+
+**Planned extensions (to be added as backend produces the data):**
+- Confidence intervals for FCI\* and the FCI gap
+- Forecasts for FCI and FCI gap up to 4 quarters ahead
+- Mixed-frequency display: FCI plotted at **monthly** frequency (FCI-G updates monthly),
+  FCI\* and output gap at **quarterly** frequency. The page should clearly note the
+  frequency difference for readers.
 - Eventually: FCI-T and other related series
 
 **Page structure (modeled on NY Fed r-star):**
-- Header: title, brief description, last-updated date
+- Header: title, brief description, authors, links (paper, data download),
+  sample end date ("Estimates through YYYY QN")
 - Chart panels (interactive, zoomable, with hover tooltips)
 - "Download data" link pointing to the CSV in `backend/data/output/`
-- "About" section linking to the paper
+- Paper served locally from `backend/refs/FCIstarPublic.pdf`
 
 **Data source:** Read from `backend/data/output/` at page load — do not hardcode any estimates.
 
@@ -162,9 +170,13 @@ Token is stored in the remote URL in `.git/config` — valid from any machine.
 
 ## Backend-Frontend Interface Contract
 
-The backend delivers exactly two files to `backend/data/output/`:
+The backend delivers files to `backend/data/output/`. The frontend reads them at page load.
+**Any change to file formats must be coordinated between Kentaro (backend) and Alp (frontend),
+and the frontend JavaScript (main.js) and page descriptions (index.html) updated accordingly.**
 
-**`fcistar.csv`** — one row per time period, columns:
+**Current files:**
+
+**`fcistar.csv`** — one row per quarter, columns:
 ```
 date, fci, fcistar, fci_gap, y_gap
 ```
@@ -178,9 +190,20 @@ date, fci, fcistar, fci_gap, y_gap
   "sample_end": "YYYY-MM-DD"
 }
 ```
+`sample_end` drives the "Estimates through YYYY QN" display in the header.
 
-The `last_updated` field is displayed prominently on the site — if stale, it signals a
-pipeline failure. Any change to this format must be coordinated between Kentaro and Alp.
+**Planned extensions to the output files:**
+
+- Confidence intervals: add `fcistar_upper`, `fcistar_lower`, `fci_gap_upper`,
+  `fci_gap_lower` columns to `fcistar.csv`
+- Forecasts: add columns `fci_gap_f1` through `fci_gap_f4` (1–4 quarter ahead forecasts)
+- Mixed frequency: consider splitting into two files —
+  `fci_monthly.csv` (date, fci at monthly frequency) and
+  `fcistar_quarterly.csv` (date, fcistar, fci_gap, y_gap at quarterly frequency).
+  The frontend will plot them on the same chart with frequency clearly labeled.
+
+These extensions require coordinated changes to both the backend pipeline and the
+frontend charts. Do not add columns silently — update this contract and main.js together.
 
 ---
 
