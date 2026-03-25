@@ -36,13 +36,15 @@ function parseCSV(text) {
 
 
 /* -------------------------------------------------------------
-   FORMAT DATE
-   Converts "2024-12-30" → "December 2024" for the last-updated
-   display in the header.
+   FORMAT QUARTER
+   Converts "2024-12-30" → "2024 Q4" for the header display.
+   End-of-quarter dates: Mar=Q1, Jun=Q2, Sep=Q3, Dec=Q4.
    ------------------------------------------------------------- */
-function formatDate(isoString) {
-  const d = new Date(isoString + 'T00:00:00');  // force local time parse
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+function formatQuarter(isoString) {
+  const month = parseInt(isoString.slice(5, 7), 10);
+  const year  = isoString.slice(0, 4);
+  const q     = Math.ceil(month / 3);
+  return `${year} Q${q}`;
 }
 
 
@@ -173,7 +175,7 @@ Promise.all([
   fetch(META_URL).then(r => r.json())
 ])
 .then(([csvText, meta]) => {
-  document.getElementById('last-updated-date').textContent = formatDate(meta.last_updated);
+  document.getElementById('last-updated-date').textContent = formatQuarter(meta.sample_end);
   const data = parseCSV(csvText);
   drawCharts(data);
 })
