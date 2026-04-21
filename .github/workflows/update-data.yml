@@ -39,9 +39,10 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: backend/pipeline/requirements.txt
 
       - name: Install dependencies
-        run: pip install numpy pandas requests scipy statsmodels openpyxl
+        run: pip install -r backend/pipeline/requirements.txt
 
       - name: Assemble data
         env:
