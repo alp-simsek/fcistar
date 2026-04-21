@@ -4,12 +4,21 @@
 # Triggers on every push to main. Assembles frontend/src/ and
 # backend/data/output/ into a single deployment directory,
 # then publishes it as a GitHub Pages site.
+#
+# Also triggers when the "Monthly data update" workflow finishes
+# successfully. That workflow pushes to main using GITHUB_TOKEN,
+# which — by GitHub's anti-loop rule — does not fire the push
+# trigger above. The workflow_run trigger below handles that case.
 # =============================================================
 
 name: Deploy to GitHub Pages
 
 on:
   push:
+    branches: [main]
+  workflow_run:
+    workflows: [Monthly data update]
+    types: [completed]
     branches: [main]
 
 # Required permissions for the official GitHub Pages deploy actions
@@ -21,6 +30,9 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Skip deploy if the upstream data-update workflow failed.
+    # The push-trigger path always proceeds.
+    if: github.event_name == 'push' || github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
