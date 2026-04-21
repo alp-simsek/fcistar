@@ -49,6 +49,20 @@ function formatQuarter(isoString) {
 
 
 /* -------------------------------------------------------------
+   FORMAT MONTH-YEAR
+   Converts "2026-04-21" → "April 2026" for the header display.
+   Used for the pipeline's last-refresh date.
+   ------------------------------------------------------------- */
+function formatMonthYear(isoString) {
+  const months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  const monthIdx = parseInt(isoString.slice(5, 7), 10) - 1;
+  const year     = isoString.slice(0, 4);
+  return `${months[monthIdx]} ${year}`;
+}
+
+
+/* -------------------------------------------------------------
    ZERO LINE SHAPE
    Plotly "shapes" are annotations drawn on top of charts.
    xref:'paper' means x0=0,x1=1 spans the full chart width
@@ -175,11 +189,13 @@ Promise.all([
   fetch(META_URL).then(r => r.json())
 ])
 .then(([csvText, meta]) => {
-  document.getElementById('last-updated-date').textContent = formatQuarter(meta.sample_end);
+  document.getElementById('last-updated-date').textContent   = formatQuarter(meta.sample_end);
+  document.getElementById('last-refreshed-date').textContent = formatMonthYear(meta.last_updated);
   const data = parseCSV(csvText);
   drawCharts(data);
 })
 .catch(err => {
   console.error('Failed to load data:', err);
-  document.getElementById('last-updated-date').textContent = 'unavailable';
+  document.getElementById('last-updated-date').textContent   = 'unavailable';
+  document.getElementById('last-refreshed-date').textContent = 'unavailable';
 });
