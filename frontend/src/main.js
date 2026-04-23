@@ -7,6 +7,16 @@
 const DATA_URL = '../../backend/data/output/fcistar.csv';
 const META_URL = '../../backend/data/output/metadata.json';
 
+const CHART_IDS = ['chart-fci-and-star', 'chart-fci-gap', 'chart-ygap'];
+
+// Which columns of the CSV each chart plots on its y-axis. Used when
+// rescaling the y-axis to fit the data in the currently-visible x-range.
+const CHART_Y_COLS = {
+  'chart-fci-and-star': ['fci', 'fcistar'],
+  'chart-fci-gap':      ['fci_gap'],
+  'chart-ygap':         ['y_gap'],
+};
+
 // Color palette
 const COLORS = {
   fci:     '#7a9cc4',  // steel blue — input series
@@ -94,6 +104,14 @@ function baseLayout(yAxisTitle) {
       type: 'date',
       gridcolor: '#eee',
       linecolor: '#ccc',
+      // Year labels at long zoom, "Mon YYYY" at short zoom.
+      tickformatstops: [
+        { dtickrange: [null,   'M6'], value: '%b %Y' },
+        { dtickrange: ['M6',   null], value: '%Y' },
+      ],
+      // Hover always shows full date (e.g. "March 31, 2025"),
+      // independent of the tick label format.
+      hoverformat: '%B %-d, %Y',
     },
     yaxis: {
       title: { text: yAxisTitle, standoff: 8 },
@@ -179,6 +197,72 @@ function drawCharts(data) {
 
 
 /* -------------------------------------------------------------
+   RANGE BUTTONS
+   Applies the same x-axis range to all three charts via
+   Plotly.relayout, and rescales each chart's y-axis to fit only
+   the data within the visible window (Plotly's built-in
+   yaxis.autorange considers all data, not just what's visible).
+   ------------------------------------------------------------- */
+
+// Returns [min, max] of the given columns over rows whose date is
+// within [xStart, xEnd], with 5% padding. null if the window is empty.
+function visibleYRange(data, xStart, xEnd, cols) {
+  let lo = Infinity, hi = -Infinity;
+  for (const row of data) {
+    const d = new Date(row.date);
+    if (d < xStart || d > xEnd) continue;
+    for (const c of cols) {
+      const v = row[c];
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  if (!isFinite(lo)) return null;
+  const pad = (hi - lo) * 0.05 || 0.1;
+  return [lo - pad, hi + pad];
+}
+
+function applyRange(years, data) {
+  const endStr = data[data.length - 1].date;
+  const end    = new Date(endStr);
+
+  let start, startStr;
+  if (years === 'all') {
+    startStr = data[0].date;
+    start    = new Date(startStr);
+  } else {
+    start    = new Date(end);
+    start.setUTCFullYear(start.getUTCFullYear() - years);
+    startStr = start.toISOString().slice(0, 10);
+  }
+
+  CHART_IDS.forEach(id => {
+    const yrange = visibleYRange(data, start, end, CHART_Y_COLS[id]);
+    const update = { 'yaxis.autorange': false };
+    if (years === 'all') {
+      update['xaxis.autorange'] = true;
+    } else {
+      update['xaxis.range'] = [startStr, endStr];
+    }
+    if (yrange) update['yaxis.range'] = yrange;
+    Plotly.relayout(id, update);
+  });
+}
+
+function initRangeButtons(data) {
+  document.querySelectorAll('.range-buttons button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.range-buttons button')
+              .forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const y = btn.dataset.years;
+      applyRange(y === 'all' ? 'all' : parseInt(y, 10), data);
+    });
+  });
+}
+
+
+/* -------------------------------------------------------------
    MAIN ENTRY POINT
    Promise.all fires two fetch requests simultaneously and waits
    for both to finish before proceeding. If either fails, the
@@ -193,6 +277,7 @@ Promise.all([
   document.getElementById('last-refreshed-date').textContent = formatMonthYear(meta.last_updated);
   const data = parseCSV(csvText);
   drawCharts(data);
+  initRangeButtons(data);
 })
 .catch(err => {
   console.error('Failed to load data:', err);

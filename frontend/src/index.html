@@ -48,6 +48,16 @@
   <main>
     <div class="container">
 
+      <!-- Global date-range control: changes x-axis on all three charts -->
+      <nav class="range-buttons" aria-label="Date range">
+        <span class="range-label">Range:</span>
+        <button type="button" data-years="1">1Y</button>
+        <button type="button" data-years="5">5Y</button>
+        <button type="button" data-years="10">10Y</button>
+        <button type="button" data-years="20">20Y</button>
+        <button type="button" data-years="all" class="active">All</button>
+      </nav>
+
       <!-- Chart 1: FCI and FCI* together (main chart) -->
       <section class="chart-section">
         <h2>FCI and FCI<span class="star">*</span></h2>

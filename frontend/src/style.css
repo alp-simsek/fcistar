@@ -122,6 +122,44 @@ main {
   padding: 48px 0 32px;
 }
 
+.range-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-bottom: 28px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
+.range-buttons .range-label {
+  font-size: 0.85rem;
+  color: #555;
+  margin-right: 4px;
+}
+
+.range-buttons button {
+  appearance: none;
+  background: #fff;
+  border: 1px solid #ccc;
+  color: #555;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.range-buttons button:hover {
+  background: #f0f0f0;
+}
+
+.range-buttons button.active {
+  background: #1a3a6b;
+  border-color: #1a3a6b;
+  color: #fff;
+}
+
 .chart-section {
   margin-bottom: 56px;
 }
