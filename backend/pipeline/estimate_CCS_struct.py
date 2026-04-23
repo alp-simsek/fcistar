@@ -86,8 +86,19 @@ def find_decimal_idx(date_decimal: np.ndarray, target: float) -> int:
     return int(idx[0])
 
 
-def sample_window(recent_data: int, sample_end_decimal: float | None = None) -> tuple[float, float]:
-    """Replicate the MATLAB sample selection controlled by recent_data."""
+def sample_window(
+    recent_data: int,
+    sample_end_decimal: float | None = None,
+    latest_available_decimal: float | None = None,
+) -> tuple[float, float]:
+    """
+    Replicate the MATLAB sample selection controlled by recent_data.
+
+    For recent_data == 3 (the live-site specification), keep the MATLAB start
+    date but let the sample end default to the latest quarter available in
+    assembled data_hlm.csv unless the user explicitly passes
+    --sample-end-decimal.
+    """
     windows = {
         0: (1961.00, 2019.75),
         1: (1990.00, 2019.75),
@@ -97,9 +108,19 @@ def sample_window(recent_data: int, sample_end_decimal: float | None = None) -> 
     }
     if recent_data not in windows:
         raise ValueError(f"Unsupported recent_data={recent_data}")
+
     start_dec, end_dec = windows[recent_data]
+
     if sample_end_decimal is not None:
         end_dec = sample_end_decimal
+    elif recent_data == 3:
+        if latest_available_decimal is None:
+            raise ValueError(
+                "latest_available_decimal must be provided when recent_data == 3 "
+                "and sample_end_decimal is not specified."
+            )
+        end_dec = latest_available_decimal
+
     return start_dec, end_dec
 
 
@@ -150,7 +171,13 @@ def build_step3_matrices(
     fci_new_3yr = data_hlm["fci_new_3yr"].to_numpy()
     fci_use = fci_new_3yr if recent_data == 3 else fci_chicago
 
-    start_dec, end_dec = sample_window(recent_data, sample_end_decimal)
+    latest_available_decimal = float(data_hlm["date_decimal"].dropna().max())
+
+    start_dec, end_dec = sample_window(
+    recent_data=recent_data,
+    sample_end_decimal=sample_end_decimal,
+    latest_available_decimal=latest_available_decimal,
+    )
     start_idx = find_decimal_idx(date_decimal, start_dec)
     end_idx = find_decimal_idx(date_decimal, end_dec)
 
