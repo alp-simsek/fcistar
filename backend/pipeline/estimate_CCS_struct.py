@@ -68,6 +68,10 @@ def output_root() -> Path:
     return backend_root() / "data" / "output"
 
 
+def vintages_root() -> Path:
+    return output_root() / "vintages"
+    
+
 def assembled_root() -> Path:
     return raw_root() / "assembled"
 
@@ -691,20 +695,41 @@ def save_se_outputs(se_output: dict[str, Any] | None) -> None:
 
 
 def write_outputs(fcistar_df: pd.DataFrame, theta_opt3: np.ndarray) -> None:
-    """Write the files consumed directly by the frontend."""
+    """Write current frontend files and archive dated vintage copies."""
     out_dir = output_root()
+    vint_dir = vintages_root()
+
     out_dir.mkdir(parents=True, exist_ok=True)
-    fcistar_df.to_csv(out_dir / "fcistar.csv", index=False)
+    vint_dir.mkdir(parents=True, exist_ok=True)
+
+    run_date = pd.Timestamp.today().strftime("%Y-%m-%d")
 
     metadata = {
-        "last_updated": pd.Timestamp.today().strftime("%Y-%m-%d"),
+        "last_updated": run_date,
         "sample_start": str(fcistar_df["date"].iloc[0]),
         "sample_end": str(fcistar_df["date"].iloc[-1]),
     }
+
+    # Current files read by the frontend
+    fcistar_df.to_csv(out_dir / "fcistar.csv", index=False)
     with open(out_dir / "metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
     with open(out_dir / "theta_opt3.json", "w", encoding="utf-8") as f:
         json.dump({"theta_opt3": theta_opt3.tolist()}, f, indent=2)
+
+    # Archived vintage files keyed by pipeline run date
+    vintage_fcistar_path = vint_dir / f"fcistar_{run_date}.csv"
+    vintage_metadata_path = vint_dir / f"metadata_{run_date}.json"
+
+    if vintage_fcistar_path.exists() or vintage_metadata_path.exists():
+        raise FileExistsError(
+            f"Vintage files for run date {run_date} already exist in {vint_dir}. "
+            "Refusing to overwrite archived vintages."
+        )
+
+    fcistar_df.to_csv(vintage_fcistar_path, index=False, mode="x")
+    with open(vintage_metadata_path, "x", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=2)
 
 
 def parse_args() -> argparse.Namespace:
