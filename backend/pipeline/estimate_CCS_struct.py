@@ -70,7 +70,7 @@ def output_root() -> Path:
 
 def vintages_root() -> Path:
     return output_root() / "vintages"
-    
+
 
 def assembled_root() -> Path:
     return raw_root() / "assembled"
