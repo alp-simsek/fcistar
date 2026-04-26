@@ -25,7 +25,7 @@ static images, and eventually multiple series (FCI\*, FCI-T, FCI gaps).
 
 **Current sample end:** 2025Q4. Advances dynamically — the `sample_window` function in `estimate_CCS_struct.py` now reads the latest available quarter from `data_hlm.csv` when `recent_data=3` (commit `aa3401a`).
 
-**Vintages archive shipped (Kentaro, commits `faa2aa7` / `055fd2b`).** `write_outputs` now also writes `fcistar_YYYY-MM-DD.csv` and `metadata_YYYY-MM-DD.json` into `backend/data/output/vintages/`, keyed by pipeline run date. Existing vintage files are never overwritten — the function raises `FileExistsError` if a file for the run date already exists. The next monthly run (2026-05-01) will populate the folder for the first time.
+**Vintages archive live and link shipped (2026-04-26).** Kentaro's `write_outputs` (commits `faa2aa7` / `055fd2b`) now also writes `fcistar_YYYY-MM-DD.csv` and `metadata_YYYY-MM-DD.json` into `backend/data/output/vintages/`, keyed by pipeline run date. Existing vintage files are never overwritten — the function raises `FileExistsError` if a file for the run date already exists. Folder was first populated by a manual local run today (commit `ac57496`). The header now includes a "Past vintages" link pointing to that folder on GitHub (commit `2acd548`). Email sent to Kentaro acknowledging; status update sent to Ricardo and Tomas.
 
 **Repo secret `FRED_API_KEY`** is set. Used by the monthly-update workflow.
 
@@ -33,7 +33,6 @@ static images, and eventually multiple series (FCI\*, FCI-T, FCI gaps).
 
 ## Outstanding Items
 
-- **(Frontend, ready to do)** Add a "Past vintages" link in the header-links row pointing to `https://github.com/alp-simsek/fcistar/tree/main/backend/data/output/vintages` on GitHub. Test locally before push. Note: the folder will be empty until the 2026-05-01 monthly run, so the link will 404 for a few days unless we trigger a manual run first.
 - **(Roadmap, not yet scheduled)** Confidence intervals for FCI\* and the FCI gap; 1–4 quarter forecasts; mixed-frequency display with monthly FCI alongside quarterly FCI\*; eventually FCI-T.
 - **(Not for Claude — PI discussion)** Tomas raised a research question about adapting the model to Goldman vs. FCI-G and the levels-vs-differences issue. That's for Alp, Ricardo, and Tomas to work through.
 
