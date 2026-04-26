@@ -17,7 +17,7 @@ static images, and eventually multiple series (FCI\*, FCI-T, FCI gaps).
 
 ---
 
-## Current Status (as of 2026-04-23)
+## Current Status (as of 2026-04-26)
 
 **Site is live and fully auto-updating.** https://fcistar.org shows three interactive Plotly charts (FCI & FCI\*, FCI gap, output gap), a global date-range selector (1Y / 5Y / 10Y / 20Y / All) that rescales all charts simultaneously, and a header showing "Estimates through YYYY QN · Last updated Month YYYY".
 
@@ -25,14 +25,15 @@ static images, and eventually multiple series (FCI\*, FCI-T, FCI gaps).
 
 **Current sample end:** 2025Q4. Advances dynamically — the `sample_window` function in `estimate_CCS_struct.py` now reads the latest available quarter from `data_hlm.csv` when `recent_data=3` (commit `aa3401a`).
 
+**Vintages archive shipped (Kentaro, commits `faa2aa7` / `055fd2b`).** `write_outputs` now also writes `fcistar_YYYY-MM-DD.csv` and `metadata_YYYY-MM-DD.json` into `backend/data/output/vintages/`, keyed by pipeline run date. Existing vintage files are never overwritten — the function raises `FileExistsError` if a file for the run date already exists. The next monthly run (2026-05-01) will populate the folder for the first time.
+
 **Repo secret `FRED_API_KEY`** is set. Used by the monthly-update workflow.
 
 ---
 
 ## Outstanding Items
 
-- **(Kentaro)** Add a vintages archive. Modify `write_outputs` in `estimate_CCS_struct.py` to also save a dated copy (e.g. `fcistar_YYYY-MM-DD.csv` + `metadata_YYYY-MM-DD.json`) into `backend/data/output/vintages/` on every run, never overwriting. Keyed on run date, not sample end — two runs with the same sample end differ because of revisions. Email sent 2026-04-23; awaiting response.
-- **(Frontend, after vintages land)** Add a "Past vintages" link in the header-links row pointing to the vintages folder on GitHub. Test locally before push.
+- **(Frontend, ready to do)** Add a "Past vintages" link in the header-links row pointing to `https://github.com/alp-simsek/fcistar/tree/main/backend/data/output/vintages` on GitHub. Test locally before push. Note: the folder will be empty until the 2026-05-01 monthly run, so the link will 404 for a few days unless we trigger a manual run first.
 - **(Roadmap, not yet scheduled)** Confidence intervals for FCI\* and the FCI gap; 1–4 quarter forecasts; mixed-frequency display with monthly FCI alongside quarterly FCI\*; eventually FCI-T.
 - **(Not for Claude — PI discussion)** Tomas raised a research question about adapting the model to Goldman vs. FCI-G and the levels-vs-differences issue. That's for Alp, Ricardo, and Tomas to work through.
 
@@ -111,13 +112,14 @@ that format in `backend/README.md`.
 
 **Entry points:**
 - `backend/pipeline/assemble_data.py` — pulls FRED series + FCI-G CSVs from the Fed Board + HLW COVID index from the bundled xlsx, aggregates to a quarterly panel, writes intermediates to `backend/data/raw/assembled/` (`data_hlm.csv`, `covid_dummies.csv`, `data_fred_raw.csv`, `assemble_data_metadata.json`).
-- `backend/pipeline/estimate_CCS_struct.py` — loads the intermediates, runs the Kalman filter + smoother via `_aux_fun/`, writes `fcistar.csv`, `metadata.json`, and `theta_opt3.json` to `backend/data/output/`.
+- `backend/pipeline/estimate_CCS_struct.py` — loads the intermediates, runs the Kalman filter + smoother via `_aux_fun/`, writes `fcistar.csv`, `metadata.json`, and `theta_opt3.json` to `backend/data/output/`, and archives dated copies of the CSV + metadata into `backend/data/output/vintages/`.
 
 **Key behavior:**
 - `--recent-data` defaults to `3`, the live-site spec. In this mode, the sample end is read from the latest available quarter in `data_hlm.csv` (not hardcoded). Other `recent_data` values (0, 1, 2, 4) use the hardcoded windows in `sample_window()` for paper replication.
 - `--sample-end-decimal` overrides the auto-detected end if needed (useful for reproducing a historical vintage).
 - `--compute-se` (0/1, default 0) toggles bootstrap SE computation.
 - The COVID index is set to zero from 2023Q1 onwards, per page 12 of the paper.
+- `write_outputs` writes the live frontend files (`fcistar.csv`, `metadata.json`, `theta_opt3.json`) and also archives `vintages/fcistar_YYYY-MM-DD.csv` + `vintages/metadata_YYYY-MM-DD.json`. Vintages are keyed by run date (not sample end), and the function raises `FileExistsError` if the run-date files already exist — so a same-day rerun fails loudly rather than silently overwriting history. To force a same-day rerun, delete the offending vintage files first.
 
 **Running locally:** see "Local dev" section below. Requires `FRED_API_KEY` env var (from `.env` in the repo root, gitignored).
 
@@ -150,7 +152,7 @@ that format in `backend/README.md`.
 - 1–4 quarter forecasts
 - Mixed-frequency display: monthly FCI alongside quarterly FCI\*, gap, y\_gap
 - Eventually: FCI-T and related series
-- "Past vintages" link once Kentaro ships the vintages archive
+- "Past vintages" link in the header (vintages archive shipped 2026-04-25; folder fills on the next monthly run)
 
 ---
 
@@ -203,6 +205,8 @@ date, fci, fcistar, fci_gap, y_gap
 **`theta_opt3.json`** — fitted parameter vector from the Kalman estimation. Not consumed by the frontend; kept in git for reproducibility/debugging.
 
 **`fci_star_results.xlsx`** — Excel bundle written by the estimation. Gitignored (pattern `backend/data/output/*.xlsx`), regenerated each run.
+
+**`vintages/fcistar_YYYY-MM-DD.csv`** and **`vintages/metadata_YYYY-MM-DD.json`** — dated archive of every pipeline run. Same schemas as the live files above. Keyed by the pipeline **run date**, not the sample end (so two runs with the same sample end produce two separate vintages, capturing data revisions). Never overwritten — the pipeline raises `FileExistsError` on a same-day rerun.
 
 **Planned extensions to the output files:**
 
