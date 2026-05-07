@@ -19,8 +19,13 @@ name: Monthly data update
 
 on:
   schedule:
-    # 06:00 UTC on the 1st of every month (~1–2am US Eastern)
-    - cron: '0 6 1 * *'
+    # 18:00 UTC on the 1st of every month (~1-2pm US Eastern).
+    # The Fed Board republishes the FCI-G public CSVs around 14:00 UTC
+    # on the 1st with the previous month's value. Firing earlier (e.g.
+    # 06:00 UTC) caused us to pull a stale FCI-G file and miss the most
+    # recent quarter -- see 2026-05-01 cron run, which produced
+    # sample_end = 2025Q4 instead of 2026Q1.
+    - cron: '0 18 1 * *'
   workflow_dispatch:
 
 permissions:
