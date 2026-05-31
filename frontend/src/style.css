@@ -186,6 +186,22 @@ main {
   color: #1a4a8a;
 }
 
+/* Small caption under a chart (e.g. explaining the dotted nowcast line) */
+.chart-note {
+  font-size: 0.82rem;
+  color: #777;
+  margin-top: 10px;
+  max-width: 800px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+}
+.chart-note a { color: #1a4a8a; }
+.dotted-key {
+  border-bottom: 2px dotted #7a9cc4;
+  padding-bottom: 1px;
+  color: #555;
+}
+
 /* The chart div itself — Plotly will size the chart inside this */
 #chart-fci-gap,
 #chart-fci-and-star,

@@ -124,6 +124,21 @@ that format in `backend/README.md`.
 
 **Do not modify** `backend/refs/matlab/` — it's the read-only Matlab spec used to validate the Python port.
 
+### Daily FCI-G nowcast (extends FCI on Figure 1 to the most recent day)
+
+A second, **daily/weekday** pipeline produces a high-frequency nowcast of FCI-G that extends the FCI
+line (and FCI gap) past the last official monthly release. Scripts in `backend/pipeline/`
+(`get_fcig.py`, `reproduce_factors.py`, `daily_backcast.py`, `nowcast_fcig.py`) are **PORTED FROM THE
+RESEARCH COPY** at `code/empirics/fcig/` in the FCIstar Dropbox project (NOT in this repo). That
+research copy is canonical: make nowcast changes there first, then port here. Keep the two in sync —
+they should differ only in I/O paths and the output written for the frontend.
+
+Idea: keep the Fed's published FCI-G weights, feed daily public proxies, evaluate with trailing
+3-month windows; anchor to each official release. Output (interface contract): `fci_nowcast.csv`
+(date, fci, fci_gap, kind ∈ {official, nowcast}) for dates after the last estimated quarter, plus
+nowcast fields in `metadata.json`. `fcistar.csv` stays quarterly. The gap extension holds FCI* at its
+latest estimate (`fcistar_last`). A weekday cron runs the daily pipeline, commits if changed, redeploys.
+
 ---
 
 ## Frontend Status

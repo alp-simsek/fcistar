@@ -22,3 +22,6 @@ backend/data/output/*.xlsx
 
 # Internal build log (personal notes, not for the repo)
 frontend/BUILD_LOG.md
+
+# Daily FCI-G nowcast intermediates (raw/weights/official/daily; regenerated each run)
+backend/pipeline/data/

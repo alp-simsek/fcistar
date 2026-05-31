@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How the FCI nowcast is computed — FCI*</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <header>
+    <div class="container">
+      <h1>The FCI nowcast</h1>
+      <p class="subtitle">
+        How we extend FCI to the most recent day, ahead of the Federal Reserve's monthly release.
+      </p>
+      <p class="header-links">
+        <a href="index.html">&larr; Back to FCI*</a>
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+
+      <section class="chart-section">
+        <h2>The idea</h2>
+        <p class="chart-description">
+          The financial-conditions index we plot is the Federal Reserve's
+          <a href="https://www.federalreserve.gov/econres/notes/feds-notes/a-new-index-to-measure-us-financial-conditions-20230630.html" target="_blank">FCI&#8209;G (baseline, 3&#8209;year lookback)</a>,
+          which the Board publishes <strong>monthly</strong>, about three weeks after the month ends. To show where
+          financial conditions stand <em>today</em>, we extend it to a daily frequency. The recipe is deliberately
+          simple: we keep the Fed's published weights unchanged and only change the data &mdash; feeding in daily,
+          publicly available market series and evaluating the index the same way the Fed does.
+        </p>
+      </section>
+
+      <section class="chart-section">
+        <h2>How it is built</h2>
+        <p class="chart-description">
+          FCI&#8209;G is a weighted sum of the past three years of changes in seven financial variables &mdash; the
+          federal funds rate, the 10&#8209;year Treasury yield, the 30&#8209;year mortgage rate, the BBB corporate bond
+          yield, the stock market, house prices, and the broad dollar. The weights are dynamic multipliers from the
+          Fed's models that translate each change into its effect on next&#8209;year GDP growth; we take them directly
+          from the Fed's published replication code.
+        </p>
+        <p class="chart-description">
+          For each calendar day we recompute the index using <strong>trailing three&#8209;month windows</strong> measured
+          from that day. This rolls continuously, so the daily series has no artificial month&#8209;boundary jumps, and at
+          month&#8209;ends it coincides with the Fed's calendar&#8209;based construction. We then <strong>anchor</strong> the
+          series to the official numbers: it equals each released monthly value exactly, and only the dates <em>after</em>
+          the latest release &mdash; the dotted segment &mdash; are a genuine forecast, carried forward by the daily
+          movement in markets.
+        </p>
+        <p class="chart-description">
+          Evaluated at month&#8209;ends over 2009&ndash;present, this daily reconstruction matches the value the Fed later
+          publishes with an R&sup2; of about 0.996. In other words, standing at the end of a month with only the data
+          available then, it recovers the official print released weeks later.
+        </p>
+      </section>
+
+      <section class="chart-section">
+        <h2>Data</h2>
+        <p class="chart-description">
+          The daily inputs are all public: the effective federal funds rate, the Gürkaynak&ndash;Sack&ndash;Wright
+          10&#8209;year yield, the ICE BofA BBB corporate yield, the FT Wilshire 5000 total&#8209;market index, the broad
+          dollar index, the Optimal Blue 30&#8209;year mortgage rate, and the Zillow home value index (held between its
+          monthly updates). The series refreshes every weekday after the U.S. market close.
+        </p>
+      </section>
+
+      <section class="chart-section">
+        <h2>Two caveats</h2>
+        <p class="chart-description">
+          Six of the seven variables reproduce the official index almost exactly. Two rely on approximations where the
+          Fed's exact series is not public:
+        </p>
+        <p class="chart-description">
+          <strong>Mortgage rate.</strong> The Fed uses the Optimal Blue conforming rate <em>adjusted for the average
+          points and fees paid by prime borrowers</em> &mdash; an effective rate that is not published. We use the public
+          note&#8209;rate index, which leaves a small (~8%) discrepancy that is larger in volatile rate periods.
+        </p>
+        <p class="chart-description">
+          <strong>BBB corporate yield.</strong> The Fed's ICE BofA BBB index is publicly available only for the last
+          three years. Recent dates use that actual series; earlier years are approximated with Moody's Baa yield
+          (rescaled), so the historical BBB contribution is approximate.
+        </p>
+      </section>
+
+      <section class="chart-section">
+        <h2>The gap</h2>
+        <p class="chart-description">
+          The FCI gap (FCI minus FCI*) is extended with the same daily nowcast, holding FCI* at its latest quarterly
+          estimate. FCI* is the slow&#8209;moving neutral level, so holding it fixed over the short nowcast horizon is a
+          mild assumption; it is updated when the quarterly FCI* estimation re&#8209;runs.
+        </p>
+      </section>
+
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p class="footer-note">© 2026 Caballero, Caravello, and Simsek</p>
+    </div>
+  </footer>
+
+</body>
+</html>

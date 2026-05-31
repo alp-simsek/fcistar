@@ -1,0 +1,77 @@
+# =============================================================
+# Daily FCI nowcast
+#
+# Runs the daily FCI-G nowcast pipeline every weekday after the US
+# market close:
+#   1. get_fcig.py       pulls daily public proxies + the official
+#                        monthly FCI-G into backend/pipeline/data/.
+#   2. daily_backcast.py  trailing-window daily reconstruction.
+#   3. nowcast_fcig.py    anchors it to the official releases.
+#   4. build_fci_nowcast.py  writes the frontend contract
+#                            backend/data/output/fci_nowcast.csv and
+#                            adds the nowcast fields to metadata.json.
+#
+# These scripts are ported from the research copy at
+# code/empirics/fcig/ (FCIstar Dropbox); keep the two in sync.
+#
+# If fci_nowcast.csv / metadata.json changed, commit + push to main.
+# That push triggers deploy.yml (via workflow_run) to redeploy the site.
+# Also runnable on demand (workflow_dispatch).
+# =============================================================
+
+name: Daily FCI nowcast
+
+on:
+  schedule:
+    # 22:00 UTC Mon-Fri (~5-6pm US Eastern, after the market close so the
+    # day's equity/yield closes are final). Markets/FRED don't update on
+    # weekends, so a 7-day cron would just recompute identical numbers.
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nowcast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/pipeline/requirements.txt
+
+      - name: Run daily nowcast pipeline
+        working-directory: backend/pipeline
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          python get_fcig.py
+          python daily_backcast.py
+          python nowcast_fcig.py
+          python build_fci_nowcast.py
+
+      - name: Commit and push if the nowcast changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add backend/data/output/fci_nowcast.csv backend/data/output/metadata.json
+
+          if git diff --cached --quiet; then
+            echo "No change to the nowcast."
+            exit 0
+          fi
+
+          THROUGH=$(python -c "import json; print(json.load(open('backend/data/output/metadata.json'))['nowcast_through'])")
+          git commit -m "Daily FCI nowcast (through $THROUGH)"
+          git push

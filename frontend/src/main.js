@@ -1,21 +1,21 @@
 /* =============================================================
    FCI* Website — main.js
-   Loads fcistar.csv and metadata.json, then draws three
-   interactive Plotly charts.
+   Loads fcistar.csv (quarterly), fci_nowcast.csv (recent monthly
+   official + daily nowcast extension), and metadata.json, then
+   draws three interactive Plotly charts.
+
+   Figure 1 (FCI & FCI*) and Figure 2 (FCI gap) extend FCI past the
+   last estimated quarter: a SOLID line through the last official
+   monthly FCI-G release, then a DOTTED line (same color) for the
+   daily nowcast of the not-yet-released dates. The gap extension
+   holds FCI* at its latest estimate (metadata.fcistar_last).
    ============================================================= */
 
-const DATA_URL = '../../backend/data/output/fcistar.csv';
-const META_URL = '../../backend/data/output/metadata.json';
+const DATA_URL    = '../../backend/data/output/fcistar.csv';
+const NOWCAST_URL = '../../backend/data/output/fci_nowcast.csv';
+const META_URL    = '../../backend/data/output/metadata.json';
 
 const CHART_IDS = ['chart-fci-and-star', 'chart-fci-gap', 'chart-ygap'];
-
-// Which columns of the CSV each chart plots on its y-axis. Used when
-// rescaling the y-axis to fit the data in the currently-visible x-range.
-const CHART_Y_COLS = {
-  'chart-fci-and-star': ['fci', 'fcistar'],
-  'chart-fci-gap':      ['fci_gap'],
-  'chart-ygap':         ['y_gap'],
-};
 
 // Color palette
 const COLORS = {
@@ -25,12 +25,13 @@ const COLORS = {
   ygap:    '#1a3a6b',  // navy      — output gap
 };
 
+// Per-chart series (x/y arrays of every plotted point), used to rescale
+// the y-axis to the data within the visible x-window. Set in drawCharts.
+let CHART_SERIES = {};
+let END_STR = null;   // latest date across all series (drives the x-range end)
 
-/* -------------------------------------------------------------
-   CSV PARSER
-   Our CSV is simple (no quoted fields, no commas in values),
-   so we parse it manually rather than importing a library.
-   ------------------------------------------------------------- */
+
+/* ---------------- CSV PARSER ---------------- */
 function parseCSV(text) {
   const lines = text.trim().split('\n');
   const headers = lines[0].split(',').map(h => h.trim());
@@ -38,46 +39,29 @@ function parseCSV(text) {
     const vals = line.split(',');
     const row = {};
     headers.forEach((h, i) => {
-      row[h] = h === 'date' ? vals[i].trim() : parseFloat(vals[i]);
+      row[h] = (h === 'date' || h === 'kind') ? vals[i].trim() : parseFloat(vals[i]);
     });
     return row;
   });
 }
 
 
-/* -------------------------------------------------------------
-   FORMAT QUARTER
-   Converts "2024-12-30" → "2024 Q4" for the header display.
-   End-of-quarter dates: Mar=Q1, Jun=Q2, Sep=Q3, Dec=Q4.
-   ------------------------------------------------------------- */
-function formatQuarter(isoString) {
-  const month = parseInt(isoString.slice(5, 7), 10);
-  const year  = isoString.slice(0, 4);
-  const q     = Math.ceil(month / 3);
-  return `${year} Q${q}`;
+/* ---------------- DATE FORMATTERS ---------------- */
+function formatQuarter(iso) {
+  const month = parseInt(iso.slice(5, 7), 10);
+  return `${iso.slice(0, 4)} Q${Math.ceil(month / 3)}`;
+}
+const MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+function formatMonthYear(iso) {
+  return `${MONTHS[parseInt(iso.slice(5, 7), 10) - 1]} ${iso.slice(0, 4)}`;
+}
+function formatLongDate(iso) {
+  return `${MONTHS[parseInt(iso.slice(5, 7), 10) - 1]} ${parseInt(iso.slice(8, 10), 10)}, ${iso.slice(0, 4)}`;
 }
 
 
-/* -------------------------------------------------------------
-   FORMAT MONTH-YEAR
-   Converts "2026-04-21" → "April 2026" for the header display.
-   Used for the pipeline's last-refresh date.
-   ------------------------------------------------------------- */
-function formatMonthYear(isoString) {
-  const months = ['January','February','March','April','May','June',
-                  'July','August','September','October','November','December'];
-  const monthIdx = parseInt(isoString.slice(5, 7), 10) - 1;
-  const year     = isoString.slice(0, 4);
-  return `${months[monthIdx]} ${year}`;
-}
-
-
-/* -------------------------------------------------------------
-   ZERO LINE SHAPE
-   Plotly "shapes" are annotations drawn on top of charts.
-   xref:'paper' means x0=0,x1=1 spans the full chart width
-   regardless of the data range.
-   ------------------------------------------------------------- */
+/* ---------------- LAYOUT HELPERS ---------------- */
 function zeroLine() {
   return {
     type: 'line',
@@ -87,13 +71,6 @@ function zeroLine() {
   };
 }
 
-
-/* -------------------------------------------------------------
-   BASE LAYOUT
-   Shared Plotly layout properties applied to every chart.
-   The spread operator (...baseLayout()) in each chart call
-   merges these defaults with any chart-specific overrides.
-   ------------------------------------------------------------- */
 function baseLayout(yAxisTitle) {
   return {
     margin: { t: 24, r: 24, b: 48, l: 60 },
@@ -104,13 +81,10 @@ function baseLayout(yAxisTitle) {
       type: 'date',
       gridcolor: '#eee',
       linecolor: '#ccc',
-      // Year labels at long zoom, "Mon YYYY" at short zoom.
       tickformatstops: [
-        { dtickrange: [null,   'M6'], value: '%b %Y' },
-        { dtickrange: ['M6',   null], value: '%Y' },
+        { dtickrange: [null, 'M6'], value: '%b %Y' },
+        { dtickrange: ['M6', null], value: '%Y' },
       ],
-      // Hover always shows full date (e.g. "March 31, 2025"),
-      // independent of the tick label format.
       hoverformat: '%B %-d, %Y',
     },
     yaxis: {
@@ -119,100 +93,81 @@ function baseLayout(yAxisTitle) {
       gridcolor: '#eee',
       linecolor: '#ccc',
     },
-    legend: {
-      orientation: 'h',
-      x: 0, y: 1.08,
-      font: { size: 12 },
-      bgcolor: 'rgba(0,0,0,0)',
-    },
+    legend: { orientation: 'h', x: 0, y: 1.08, font: { size: 12 }, bgcolor: 'rgba(0,0,0,0)' },
     hovermode: 'x unified',
   };
 }
 
 
-/* -------------------------------------------------------------
-   DRAW CHARTS
-   Called once the CSV is parsed. Builds three Plotly charts.
-   ------------------------------------------------------------- */
-function drawCharts(data) {
-  const dates   = data.map(d => d.date);
-  const fci     = data.map(d => d.fci);
-  const fcistar = data.map(d => d.fcistar);
-  const fciGap  = data.map(d => d.fci_gap);
-  const yGap    = data.map(d => d.y_gap);
+/* ---------------- DRAW CHARTS ---------------- */
+function drawCharts(q, nc) {
+  const col = (arr, c) => arr.map(d => d[c]);
+  const official = nc.filter(d => d.kind === 'official');   // recent monthly official points
+  const nowcast  = nc.filter(d => d.kind === 'nowcast');    // daily not-yet-released nowcast
 
-  // responsive:true  → chart resizes when the window is resized
-  // displayModeBar:'hover' → Plotly toolbar (zoom, download) appears on hover
+  // last point of the SOLID line = last official month if any, else the last quarter
+  const lastSolid = official.length ? official[official.length - 1] : q[q.length - 1];
+
+  // FCI: solid = quarterly history + monthly official; dotted = lastSolid + daily nowcast
+  const fciSolidX = col(q, 'date').concat(col(official, 'date'));
+  const fciSolidY = col(q, 'fci').concat(col(official, 'fci'));
+  const fciDotX   = [lastSolid.date].concat(col(nowcast, 'date'));
+  const fciDotY   = [lastSolid.fci].concat(col(nowcast, 'fci'));
+
+  // Gap: same split. Historical gap uses actual FCI*; the extension holds FCI* at its last value.
+  const lastSolidGap = lastSolid.fci_gap;
+  const gapSolidX = col(q, 'date').concat(col(official, 'date'));
+  const gapSolidY = col(q, 'fci_gap').concat(col(official, 'fci_gap'));
+  const gapDotX   = [lastSolid.date].concat(col(nowcast, 'date'));
+  const gapDotY   = [lastSolidGap].concat(col(nowcast, 'fci_gap'));
+
   const config = { responsive: true, displayModeBar: 'hover' };
+  const dot = (color) => ({ color, width: 2, dash: 'dot' });
 
   // --- Chart 1: FCI and FCI* ---
   Plotly.newPlot('chart-fci-and-star', [
-    {
-      x: dates, y: fci,
-      name: 'FCI',
-      type: 'scatter', mode: 'lines',
-      line: { color: COLORS.fci, width: 2 },
-      hovertemplate: '%{y:.2f}<extra>FCI</extra>'
-    },
-    {
-      x: dates, y: fcistar,
-      name: 'FCI*',
-      type: 'scatter', mode: 'lines',
-      line: { color: COLORS.fcistar, width: 2.5 },
-      hovertemplate: '%{y:.2f}<extra>FCI*</extra>'
-    }
-  ], {
-    ...baseLayout('Pct. pts. of next-year GDP growth'),
-    shapes: [zeroLine()]
-  }, config);
+    { x: fciSolidX, y: fciSolidY, name: 'FCI', type: 'scatter', mode: 'lines',
+      line: { color: COLORS.fci, width: 2 }, hovertemplate: '%{y:.2f}<extra>FCI</extra>' },
+    { x: fciDotX, y: fciDotY, name: 'FCI (nowcast)', type: 'scatter', mode: 'lines', showlegend: false,
+      line: dot(COLORS.fci), hovertemplate: '%{y:.2f}<extra>FCI · nowcast</extra>' },
+    { x: col(q, 'date'), y: col(q, 'fcistar'), name: 'FCI*', type: 'scatter', mode: 'lines',
+      line: { color: COLORS.fcistar, width: 2.5 }, hovertemplate: '%{y:.2f}<extra>FCI*</extra>' },
+  ], { ...baseLayout('Pct. pts. of next-year GDP growth'), shapes: [zeroLine()] }, config);
 
   // --- Chart 2: FCI gap ---
   Plotly.newPlot('chart-fci-gap', [
-    {
-      x: dates, y: fciGap,
-      name: 'FCI gap',
-      type: 'scatter', mode: 'lines',
-      line: { color: COLORS.gap, width: 2 },
-      hovertemplate: '%{y:.2f}<extra>FCI gap</extra>'
-    }
-  ], {
-    ...baseLayout('Pct. pts. of next-year GDP growth'),
-    shapes: [zeroLine()]
-  }, config);
+    { x: gapSolidX, y: gapSolidY, name: 'FCI gap', type: 'scatter', mode: 'lines',
+      line: { color: COLORS.gap, width: 2 }, hovertemplate: '%{y:.2f}<extra>FCI gap</extra>' },
+    { x: gapDotX, y: gapDotY, name: 'FCI gap (nowcast)', type: 'scatter', mode: 'lines', showlegend: false,
+      line: dot(COLORS.gap), hovertemplate: '%{y:.2f}<extra>FCI gap · nowcast</extra>' },
+  ], { ...baseLayout('Pct. pts. of next-year GDP growth'), shapes: [zeroLine()] }, config);
 
-  // --- Chart 3: Output gap ---
+  // --- Chart 3: Output gap (unchanged, quarterly) ---
   Plotly.newPlot('chart-ygap', [
-    {
-      x: dates, y: yGap,
-      name: 'Output gap',
-      type: 'scatter', mode: 'lines',
-      line: { color: COLORS.ygap, width: 2 },
-      hovertemplate: '%{y:.2f}%<extra>Output gap</extra>'
-    }
-  ], {
-    ...baseLayout('Percent'),
-    shapes: [zeroLine()]
-  }, config);
+    { x: col(q, 'date'), y: col(q, 'y_gap'), name: 'Output gap', type: 'scatter', mode: 'lines',
+      line: { color: COLORS.ygap, width: 2 }, hovertemplate: '%{y:.2f}%<extra>Output gap</extra>' },
+  ], { ...baseLayout('Percent'), shapes: [zeroLine()] }, config);
+
+  // record series for y-rescaling, and the global x-range end
+  CHART_SERIES = {
+    'chart-fci-and-star': [ { x: fciSolidX, y: fciSolidY }, { x: fciDotX, y: fciDotY }, { x: col(q, 'date'), y: col(q, 'fcistar') } ],
+    'chart-fci-gap':      [ { x: gapSolidX, y: gapSolidY }, { x: gapDotX, y: gapDotY } ],
+    'chart-ygap':         [ { x: col(q, 'date'), y: col(q, 'y_gap') } ],
+  };
+  END_STR = (nowcast.length ? nowcast : official.length ? official : q).slice(-1)[0].date;
 }
 
 
-/* -------------------------------------------------------------
-   RANGE BUTTONS
-   Applies the same x-axis range to all three charts via
-   Plotly.relayout, and rescales each chart's y-axis to fit only
-   the data within the visible window (Plotly's built-in
-   yaxis.autorange considers all data, not just what's visible).
-   ------------------------------------------------------------- */
-
-// Returns [min, max] of the given columns over rows whose date is
-// within [xStart, xEnd], with 5% padding. null if the window is empty.
-function visibleYRange(data, xStart, xEnd, cols) {
+/* ---------------- RANGE BUTTONS ---------------- */
+// [min,max] of all series' values within [xStart,xEnd], 5% padded; null if empty.
+function visibleYRange(seriesList, xStart, xEnd) {
   let lo = Infinity, hi = -Infinity;
-  for (const row of data) {
-    const d = new Date(row.date);
-    if (d < xStart || d > xEnd) continue;
-    for (const c of cols) {
-      const v = row[c];
+  for (const s of seriesList) {
+    for (let i = 0; i < s.x.length; i++) {
+      const d = new Date(s.x[i]);
+      if (d < xStart || d > xEnd) continue;
+      const v = s.y[i];
+      if (v == null || isNaN(v)) continue;
       if (v < lo) lo = v;
       if (v > hi) hi = v;
     }
@@ -222,62 +177,57 @@ function visibleYRange(data, xStart, xEnd, cols) {
   return [lo - pad, hi + pad];
 }
 
-function applyRange(years, data) {
-  const endStr = data[data.length - 1].date;
-  const end    = new Date(endStr);
-
+function applyRange(years) {
+  const end = new Date(END_STR);
   let start, startStr;
   if (years === 'all') {
-    startStr = data[0].date;
-    start    = new Date(startStr);
+    start = new Date('1990-01-01');
   } else {
-    start    = new Date(end);
+    start = new Date(end);
     start.setUTCFullYear(start.getUTCFullYear() - years);
     startStr = start.toISOString().slice(0, 10);
   }
-
   CHART_IDS.forEach(id => {
-    const yrange = visibleYRange(data, start, end, CHART_Y_COLS[id]);
+    const yrange = visibleYRange(CHART_SERIES[id], start, end);
     const update = { 'yaxis.autorange': false };
     if (years === 'all') {
       update['xaxis.autorange'] = true;
     } else {
-      update['xaxis.range'] = [startStr, endStr];
+      update['xaxis.range'] = [startStr, END_STR];
     }
     if (yrange) update['yaxis.range'] = yrange;
     Plotly.relayout(id, update);
   });
 }
 
-function initRangeButtons(data) {
+function initRangeButtons() {
   document.querySelectorAll('.range-buttons button').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.range-buttons button')
-              .forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.range-buttons button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const y = btn.dataset.years;
-      applyRange(y === 'all' ? 'all' : parseInt(y, 10), data);
+      applyRange(y === 'all' ? 'all' : parseInt(y, 10));
     });
   });
 }
 
 
-/* -------------------------------------------------------------
-   MAIN ENTRY POINT
-   Promise.all fires two fetch requests simultaneously and waits
-   for both to finish before proceeding. If either fails, the
-   .catch() at the end handles the error gracefully.
-   ------------------------------------------------------------- */
+/* ---------------- MAIN ENTRY ---------------- */
 Promise.all([
   fetch(DATA_URL).then(r => r.text()),
-  fetch(META_URL).then(r => r.json())
+  fetch(NOWCAST_URL).then(r => r.text()),
+  fetch(META_URL).then(r => r.json()),
 ])
-.then(([csvText, meta]) => {
+.then(([csvText, ncText, meta]) => {
   document.getElementById('last-updated-date').textContent   = formatQuarter(meta.sample_end);
   document.getElementById('last-refreshed-date').textContent = formatMonthYear(meta.last_updated);
-  const data = parseCSV(csvText);
-  drawCharts(data);
-  initRangeButtons(data);
+  const nowcastEl = document.getElementById('nowcast-through-date');
+  if (nowcastEl && meta.nowcast_through) nowcastEl.textContent = formatLongDate(meta.nowcast_through);
+
+  const q  = parseCSV(csvText);
+  const nc = parseCSV(ncText);
+  drawCharts(q, nc);
+  initRangeButtons();
 })
 .catch(err => {
   console.error('Failed to load data:', err);
