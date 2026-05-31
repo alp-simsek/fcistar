@@ -46,17 +46,15 @@
           from the Fed's published replication code.
         </p>
         <p class="chart-description">
-          For each calendar day we recompute the index using <strong>trailing three&#8209;month windows</strong> measured
-          from that day. This rolls continuously, so the daily series has no artificial month&#8209;boundary jumps, and at
-          month&#8209;ends it coincides with the Fed's calendar&#8209;based construction. We then <strong>anchor</strong> the
-          series to the official numbers: it equals each released monthly value exactly, and only the dates <em>after</em>
-          the latest release &mdash; the dotted segment &mdash; are a genuine forecast, carried forward by the daily
-          movement in markets.
+          For each day we recompute the index using <strong>trailing three&#8209;month windows</strong> ending on that
+          day, so it rolls continuously and lines up with the Fed's construction at month&#8209;ends. We then
+          <strong>anchor</strong> the series to the official numbers: it equals each released monthly value exactly, and
+          only the dates <em>after</em> the latest release &mdash; the dotted segment &mdash; are a genuine forecast,
+          carried forward by the daily movement in markets.
         </p>
         <p class="chart-description">
-          Evaluated at month&#8209;ends over 2009&ndash;present, this daily reconstruction matches the value the Fed later
-          publishes with an R&sup2; of about 0.996. In other words, standing at the end of a month with only the data
-          available then, it recovers the official print released weeks later.
+          This daily reconstruction tracks the official series very closely: standing at the end of a month with only
+          the data available then, it recovers the print the Fed releases weeks later.
         </p>
       </section>
 
@@ -71,20 +69,22 @@
       </section>
 
       <section class="chart-section">
-        <h2>Two caveats</h2>
+        <h2>A few caveats</h2>
         <p class="chart-description">
-          Six of the seven variables reproduce the official index almost exactly. Two rely on approximations where the
-          Fed's exact series is not public:
+          Six of the seven inputs reproduce the official index almost exactly. The exceptions are minor:
         </p>
         <p class="chart-description">
           <strong>Mortgage rate.</strong> The Fed uses the Optimal Blue conforming rate <em>adjusted for the average
           points and fees paid by prime borrowers</em> &mdash; an effective rate that is not published. We use the public
-          note&#8209;rate index, which leaves a small (~8%) discrepancy that is larger in volatile rate periods.
+          note&#8209;rate index instead.
         </p>
         <p class="chart-description">
           <strong>BBB corporate yield.</strong> The Fed's ICE BofA BBB index is publicly available only for the last
-          three years. Recent dates use that actual series; earlier years are approximated with Moody's Baa yield
-          (rescaled), so the historical BBB contribution is approximate.
+          three years. Recent dates use that actual series; earlier years are approximated with Moody's Baa corporate yield.
+        </p>
+        <p class="chart-description">
+          <strong>10&#8209;year yield.</strong> Our reference series (the Gürkaynak&ndash;Sack&ndash;Wright yield curve)
+          posts with a few days' lag, so the most recent days are filled in with the daily 10&#8209;year Treasury yield.
         </p>
       </section>
 
