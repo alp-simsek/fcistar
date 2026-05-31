@@ -195,12 +195,39 @@ main {
   font-family: 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.5;
 }
+ul.chart-note { padding-left: 18px; }
+ul.chart-note li { margin-bottom: 5px; }
 .chart-note a { color: #1a4a8a; }
 .dotted-key {
   border-bottom: 2px dotted #7a9cc4;
   padding-bottom: 1px;
   color: #555;
 }
+
+/* Small inline "pill" used for caption links/buttons (How it's computed, decomposition toggle,
+   Back to FCI*) so every clickable caption action looks the same — a colored box, not an arrow. */
+.pill {
+  appearance: none;
+  display: inline-block;
+  background: #f3f5f8;
+  border: 1px solid #cdd6e2;
+  color: #1a4a8a;
+  padding: 1px 7px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+.pill:hover { background: #e7edf5; }
+.back-nav { margin: 0 0 28px; }
+
+/* Swap the Figure 1 caption note between the line and decomposition views */
+.note-decomp { display: none; }
+body.decomp-on .note-line { display: none; }
+body.decomp-on .note-decomp { display: block; }
 
 /* The chart div itself — Plotly will size the chart inside this */
 #chart-fci-gap,

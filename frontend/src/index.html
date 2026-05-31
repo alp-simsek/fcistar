@@ -75,12 +75,15 @@
           FCI<span class="star">*</span> is our estimate of its neutral level.
         </p>
         <div id="chart-fci-and-star"></div>
-        <p class="chart-note">
-          Past the latest official monthly release, FCI is extended with a daily <strong>nowcast</strong> from
-          high-frequency market data (yields, equities, the dollar) &mdash; shown as a
-          <span class="dotted-key">dotted</span> line, visible when you zoom in (e.g. 1Y).
-          <a href="nowcast.html">How it's computed &rarr;</a>
-        </p>
+        <ul class="chart-note note-line">
+          <li>The <span class="dotted-key">dotted</span> line is a daily <strong>nowcast</strong> extending FCI past
+            the latest official release. <a href="nowcast.html" class="pill">How it's computed</a></li>
+          <li>FCI combines seven financial variables. Click the line or
+            <button type="button" class="pill inline-toggle" data-view="decomp">show the decomposition</button>
+            to see each contribution.</li>
+        </ul>
+        <p class="chart-note note-decomp">Each bar is a variable's contribution to FCI; the nowcast is hatched.
+          Click a bar or <button type="button" class="pill inline-toggle" data-view="line">back to FCI &amp; FCI*</button>.</p>
       </section>
 
       <!-- Chart 2: FCI gap -->
@@ -95,8 +98,8 @@
         <div id="chart-fci-gap"></div>
         <p class="chart-note">
           The gap is extended with the same daily nowcast, holding FCI<span class="star">*</span> at its latest
-          quarterly estimate &mdash; a <span class="dotted-key">dotted</span> line, visible when you zoom in (e.g. 1Y).
-          <a href="nowcast.html">How it's computed &rarr;</a>
+          quarterly estimate &mdash; a <span class="dotted-key">dotted</span> line.
+          <a href="nowcast.html" class="pill">How it's computed</a>
         </p>
       </section>
 

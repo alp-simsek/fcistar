@@ -15,14 +15,13 @@
       <p class="subtitle">
         How we extend FCI to the most recent day, ahead of the Federal Reserve's monthly release.
       </p>
-      <p class="header-links">
-        <a href="index.html">&larr; Back to FCI*</a>
-      </p>
     </div>
   </header>
 
   <main>
     <div class="container">
+
+      <p class="back-nav"><a href="index.html" class="pill">Back to FCI*</a></p>
 
       <section class="chart-section">
         <h2>The idea</h2>
@@ -43,14 +42,14 @@
           federal funds rate, the 10&#8209;year Treasury yield, the 30&#8209;year mortgage rate, the BBB corporate bond
           yield, the stock market, house prices, and the broad dollar. The weights are dynamic multipliers from the
           Fed's models that translate each change into its effect on next&#8209;year GDP growth; we take them directly
-          from the Fed's published replication code.
+          from the Fed's published replication code. Each variable contributes its own term, so the index is the
+          <strong>sum of seven component contributions</strong> (the decomposition shown on the chart).
         </p>
         <p class="chart-description">
-          For each day we recompute the index using <strong>trailing three&#8209;month windows</strong> ending on that
-          day, so it rolls continuously and lines up with the Fed's construction at month&#8209;ends. We then
+          For each day and each of the seven components, we recompute its contribution using
+          <strong>trailing three&#8209;month windows</strong> ending on that day, and add them up. We then
           <strong>anchor</strong> the series to the official numbers: it equals each released monthly value exactly, and
-          only the dates <em>after</em> the latest release &mdash; the dotted segment &mdash; are a genuine forecast,
-          carried forward by the daily movement in markets.
+          only the dates <em>after</em> the latest release &mdash; the dotted segment &mdash; are a forecast.
         </p>
         <p class="chart-description">
           This daily reconstruction tracks the official series very closely: standing at the end of a month with only
