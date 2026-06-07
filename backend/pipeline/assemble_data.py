@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -105,8 +106,16 @@ def fetch_fred_series(
         "observation_end": end_date,
         "sort_order": "asc",
     }
-    r = session.get(FRED_API_URL, params=params, timeout=60)
-    r.raise_for_status()
+    # FRED rate-limits bursts; retry 429/5xx with exponential backoff.
+    for attempt in range(5):
+        r = session.get(FRED_API_URL, params=params, timeout=60)
+        if r.status_code in (429, 500, 502, 503, 504):
+            time.sleep(2 ** attempt)
+            continue
+        r.raise_for_status()
+        break
+    else:
+        r.raise_for_status()
     payload = r.json()
 
     obs = payload.get("observations", [])
@@ -148,6 +157,7 @@ def build_fred_panel(
         raw = fetch_fred_series(sid, start_date, end_date, api_key, session)
         q = to_quarterly_mean(raw)
         panel[sid] = q.reindex(periods)
+        time.sleep(0.5)  # be gentle on the FRED rate limit between series
 
     return panel
 
