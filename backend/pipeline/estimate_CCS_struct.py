@@ -712,8 +712,21 @@ def write_outputs(fcistar_df: pd.DataFrame, theta_opt3: np.ndarray) -> None:
 
     # Current files read by the frontend
     fcistar_df.to_csv(out_dir / "fcistar.csv", index=False)
-    with open(out_dir / "metadata.json", "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
+    # The daily nowcast pipeline (build_fci_nowcast.py) adds its own keys to this
+    # same metadata.json (last_quarter, last_official_date, nowcast_through,
+    # fcistar_last). Merge into the existing file instead of overwriting so a
+    # monthly estimation run doesn't wipe the nowcast fields (which would blank
+    # out "FCI nowcast through ..." in the header until the next daily run).
+    live_metadata = {}
+    live_meta_path = out_dir / "metadata.json"
+    if live_meta_path.exists():
+        try:
+            live_metadata = json.loads(live_meta_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            live_metadata = {}
+    live_metadata.update(metadata)
+    with open(live_meta_path, "w", encoding="utf-8") as f:
+        json.dump(live_metadata, f, indent=2)
     with open(out_dir / "theta_opt3.json", "w", encoding="utf-8") as f:
         json.dump({"theta_opt3": theta_opt3.tolist()}, f, indent=2)
 
