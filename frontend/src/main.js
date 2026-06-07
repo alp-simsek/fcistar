@@ -176,7 +176,7 @@ function drawCharts() {
 
 
 /* ---------------- RANGE / Y-AXIS ---------------- */
-function lineYRange(seriesList, xStart, xEnd) {
+function lineYRange(seriesList, xStart, xEnd, includeZero) {
   let lo = Infinity, hi = -Infinity;
   for (const s of seriesList) for (let i = 0; i < s.x.length; i++) {
     const d = new Date(s.x[i]); if (d < xStart || d > xEnd) continue;
@@ -184,6 +184,9 @@ function lineYRange(seriesList, xStart, xEnd) {
     if (v < lo) lo = v; if (v > hi) hi = v;
   }
   if (!isFinite(lo)) return null;
+  // Gap charts always keep the zero line in view so the sign and magnitude of the gap
+  // are readable against it, even when the series is entirely above or below zero.
+  if (includeZero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
   const pad = (hi - lo) * 0.05 || 0.1;
   return [lo - pad, hi + pad];
 }
@@ -205,8 +208,10 @@ function applyRange(years) {
   if (years === 'all') { start = new Date('1990-01-01'); }
   else { start = new Date(end); start.setUTCFullYear(start.getUTCFullYear() - years); startStr = start.toISOString().slice(0, 10); }
 
+  const ZERO_CHARTS = ['chart-fci-gap', 'chart-ygap'];
   CHART_IDS.forEach(id => {
-    const yrange = (id === FCI_CHART && decompMode) ? decompYRange(start, end) : lineYRange(CHART_SERIES[id], start, end);
+    const yrange = (id === FCI_CHART && decompMode) ? decompYRange(start, end)
+      : lineYRange(CHART_SERIES[id], start, end, ZERO_CHARTS.includes(id));
     const update = { 'yaxis.autorange': false };
     if (years === 'all') update['xaxis.autorange'] = true; else update['xaxis.range'] = [startStr, END_STR];
     if (yrange) update['yaxis.range'] = yrange;
@@ -261,6 +266,7 @@ Promise.all([
   COMP_NOW   = comp.filter(d => d.kind === 'nowcast');
 
   drawCharts();
+  applyRange(RANGE);   // set explicit y-ranges (incl. zero line on the gap charts) on first paint
   initRangeButtons();
   initViewToggle();
 })
