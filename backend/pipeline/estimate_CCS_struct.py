@@ -528,7 +528,7 @@ def estimate_step3(
     n_starts: int = 4,
     compute_se: bool = False,
     se_draws: int = 5000,
-) -> tuple[np.ndarray, Any, float, dict[str, Any] | None]:
+) -> tuple[np.ndarray, Any, float, dict[str, Any] | None, dict[str, Any]]:
     """
     Estimate the step-3 state-space model.
 
@@ -612,7 +612,7 @@ def estimate_step3(
 
         se_output = compute_se_kalman(theta_opt=theta_opt3, constraints=constraints, evaluate_kalman=fun_se, N_draws=se_draws)
 
-    return theta_opt3, estimates_step3, fval, se_output
+    return theta_opt3, estimates_step3, fval, se_output, settings_final
 
 
 def build_output_series(theta_opt3: np.ndarray, estimates_step3: Any, inputs: dict[str, Any]) -> pd.DataFrame:
@@ -745,6 +745,64 @@ def write_outputs(fcistar_df: pd.DataFrame, theta_opt3: np.ndarray) -> None:
         json.dump(metadata, f, indent=2)
 
 
+def write_forecast_inputs(
+    data_hlm: pd.DataFrame,
+    covid_dummies: pd.DataFrame,
+    settings_final: dict[str, Any],
+    inputs: dict[str, Any],
+    args: argparse.Namespace,
+) -> None:
+    """
+    Write a small, self-contained bundle that lets the daily one-quarter-ahead
+    forecast (forecast_fcistar.py) re-run the Kalman filter with the SAME fixed
+    parameters and initial conditions, WITHOUT re-assembling FRED data or
+    re-estimating.
+
+    The bundle is everything the forecast step needs that isn't already in
+    theta_opt3.json:
+        forecast_inputs/data_hlm.csv        the quarterly panel (gdp_tot,
+                                            pce_core, fci_*, covid_index, dates)
+        forecast_inputs/covid_dummies.csv   the covid-dummy panel
+        forecast_inputs/filter_settings.json  xi_0, P_0 and the scalar spec.
+
+    xi_0 / P_0 are the EXACT initial state and covariance from the final
+    estimation pass (P_0 is derived from the pass-1 filtered covariance, so it
+    cannot be recovered from theta_opt3 alone). Because they are anchored at the
+    sample START, appending one quarter at the END reproduces the in-sample
+    filtered states identically and just adds the forecast quarter.
+    """
+    out_dir = output_root() / "forecast_inputs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    data_hlm.to_csv(out_dir / "data_hlm.csv", index=False)
+    covid_dummies.to_csv(out_dir / "covid_dummies.csv", index=False)
+
+    date = inputs["date"]
+    end_idx = inputs["end_idx"]
+    settings = {
+        "xi_0": np.asarray(settings_final["xi_0"], dtype=float).reshape(-1).tolist(),
+        "P_0": np.asarray(settings_final["P_0"], dtype=float).tolist(),
+        "fixed_param": list(np.asarray(settings_final["fixed_param"], dtype=float).reshape(-1)),
+        "detrend_y": int(settings_final["detrend_y"]),
+        # The forecast only needs the filtered (one-sided) states; no smoother.
+        "smoother": 0,
+        "states_smoother": list(settings_final["states_smoother"]),
+        # Spec needed to rebuild the step-3 matrices over the extended sample.
+        "recent_data": int(args.recent_data),
+        "set_covid_2022": int(args.set_covid_2022),
+        "restrict_af": int(args.restrict_af),
+        "sample_end_decimal": (
+            None if args.sample_end_decimal is None else float(args.sample_end_decimal)
+        ),
+        # Reference: the last in-sample quarter, used to sanity-check the append.
+        "start_idx": int(inputs["start_idx"]),
+        "end_idx": int(end_idx),
+        "last_quarter": pd.to_datetime(date.iloc[end_idx]).strftime("%Y-%m-%d"),
+    }
+    with open(out_dir / "filter_settings.json", "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2)
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--recent-data", type=int, default=3)
@@ -773,7 +831,7 @@ def main() -> None:
     )
 
     logger.info("Running step 3 estimation")
-    theta_opt3, estimates_step3, fval, se_output = estimate_step3(
+    theta_opt3, estimates_step3, fval, se_output, settings_final = estimate_step3(
         y_mat=inputs["y_mat"],
         x_mat_step3=inputs["x_mat_step3"],
         covid_dummies=inputs["covid_dummies"],
@@ -793,6 +851,9 @@ def main() -> None:
 
     logger.info("Writing backend/data/output files")
     write_outputs(fcistar_df, theta_opt3)
+
+    logger.info("Writing forecast-inputs artifact")
+    write_forecast_inputs(data_hlm, covid_dummies, settings_final, inputs, args)
 
     if se_output is not None:
         logger.info("Writing SE outputs")
