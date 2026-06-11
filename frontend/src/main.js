@@ -144,13 +144,19 @@ function chart1LineTraces() {
   ];
   if (FC) {
     const lastQ = Q[Q.length - 1];
-    // dotted interpolation from the last estimate to the forecast, + a filled dot
-    traces.push({ x: [lastQ.date, FC.date], y: [lastQ.fcistar, FC.fcistar], type: 'scatter',
-      mode: 'lines', showlegend: false, line: { color: COLORS.fcistar, width: 2.5, dash: 'dot' },
-      hovertemplate: '%{y:.2f}<extra>FCI* · forecast</extra>' });
-    traces.push({ x: [FC.date], y: [FC.fcistar], type: 'scatter', mode: 'markers', showlegend: false,
-      marker: { color: COLORS.fcistar, size: 8 },
+    // FCI* extended one quarter as a DENSE dotted interpolation line: points at the
+    // last estimate, every nowcast/official date, and the forecast quarter-end. Dense
+    // points (vs a 2-point line) make x-unified hover behave like the FCI nowcast line
+    // and stay consistent with the Figure 2 gap. The filled dot marks the forecast
+    // point; its own hover is skipped so the line shows the value once (and the FCI
+    // nowcast, which ends earlier, never shows at the forecast date).
+    const fdates = [lastQ.date].concat(NC.map(d => d.date)).concat([FC.date]);
+    const fvals = fdates.map(d => interpFcistar(d));
+    traces.push({ x: fdates, y: fvals, type: 'scatter', mode: 'lines', showlegend: false,
+      line: { color: COLORS.fcistar, width: 2.5, dash: 'dot' },
       hovertemplate: '%{y:.2f}<extra>FCI* forecast · ' + spaceQuarter(FC.target_quarter) + '</extra>' });
+    traces.push({ x: [FC.date], y: [FC.fcistar], type: 'scatter', mode: 'markers', showlegend: false,
+      marker: { color: COLORS.fcistar, size: 8 }, hoverinfo: 'skip' });
   }
   return traces;
 }
