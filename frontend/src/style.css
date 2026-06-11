@@ -229,6 +229,15 @@ ul.chart-note li { margin-bottom: 5px; }
 body.decomp-on .note-line { display: none; }
 body.decomp-on .note-decomp { display: block; }
 
+/* Inline "see inputs" reveal under Figure 1 — the SPF forecast detail box */
+.forecast-detail {
+  background: #f3f5f8;
+  border-left: 3px solid #1a4a8a;
+  padding: 8px 12px;
+  border-radius: 3px;
+  margin-top: 8px;
+}
+
 /* The chart div itself — Plotly will size the chart inside this */
 #chart-fci-gap,
 #chart-fci-and-star,

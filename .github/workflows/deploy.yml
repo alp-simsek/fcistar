@@ -54,10 +54,11 @@ jobs:
           cp backend/refs/FCIstarPublic.pdf _site/
 
           # Copy data files into a data/ subfolder
-          cp backend/data/output/fcistar.csv        _site/data/
-          cp backend/data/output/fci_nowcast.csv    _site/data/
-          cp backend/data/output/fci_components.csv _site/data/
-          cp backend/data/output/metadata.json      _site/data/
+          cp backend/data/output/fcistar.csv          _site/data/
+          cp backend/data/output/fci_nowcast.csv      _site/data/
+          cp backend/data/output/fci_components.csv   _site/data/
+          cp backend/data/output/fcistar_forecast.csv _site/data/
+          cp backend/data/output/metadata.json        _site/data/
 
           # Rewrite data paths: local dev uses ../../backend/data/output/
           # production uses data/ (relative to site root)

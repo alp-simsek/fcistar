@@ -9,14 +9,19 @@
      - Line:          FCI (solid official -> dotted nowcast) + FCI*.
      - Decomposition: the 7 contributions as signed stacked bars
                       (nowcast = hatched) + black Total line.
-   Figures 2 (FCI gap) and 3 (output gap) are unchanged; the gap is
-   extended with the nowcast holding FCI* at metadata.fcistar_last.
+   FCI* is also extended one quarter (a dotted dark-blue interpolation
+   line to a filled dot) using the SPF-based forecast in fcistar_forecast.csv.
+   Figure 2's gap dotted line is recomputed in the frontend as
+   FCI_nowcast(t) - FCI*_interp(t), where FCI* is linearly interpolated
+   between the last estimate and the one-quarter forecast (so Figure 2 is
+   exactly the vertical distance between the two lines in Figure 1).
    ============================================================= */
 
-const DATA_URL    = '../../backend/data/output/fcistar.csv';
-const NOWCAST_URL = '../../backend/data/output/fci_nowcast.csv';
-const COMP_URL    = '../../backend/data/output/fci_components.csv';
-const META_URL    = '../../backend/data/output/metadata.json';
+const DATA_URL     = '../../backend/data/output/fcistar.csv';
+const NOWCAST_URL  = '../../backend/data/output/fci_nowcast.csv';
+const COMP_URL     = '../../backend/data/output/fci_components.csv';
+const META_URL     = '../../backend/data/output/metadata.json';
+const FORECAST_URL = '../../backend/data/output/fcistar_forecast.csv';
 
 const CHART_IDS = ['chart-fci-and-star', 'chart-fci-gap', 'chart-ygap'];
 const FCI_CHART = 'chart-fci-and-star';
@@ -38,6 +43,7 @@ const COMP = [
 const PLOT_CONFIG = { responsive: true, displayModeBar: 'hover' };
 
 let Q, NC, COMP_SOLID, COMP_NOW;   // parsed data
+let FC = null;                     // one-quarter-ahead FCI* forecast row (or null)
 let CHART_SERIES = {};             // line-mode y-range series per chart
 let END_STR = null;                // latest date across series
 let RANGE = 'all';                 // current x-range selection
@@ -45,16 +51,19 @@ let decompMode = false;            // Figure 1 view
 
 
 /* ---------------- CSV PARSER ---------------- */
+const STRING_COLS = new Set(['date', 'kind', 'target_quarter', 'survey_quarter']);
 function parseCSV(text) {
   const lines = text.trim().split('\n');
   const headers = lines[0].split(',').map(h => h.trim());
   return lines.slice(1).map(line => {
     const vals = line.split(',');
     const row = {};
-    headers.forEach((h, i) => { row[h] = (h === 'date' || h === 'kind') ? vals[i].trim() : parseFloat(vals[i]); });
+    headers.forEach((h, i) => { row[h] = STRING_COLS.has(h) ? vals[i].trim() : parseFloat(vals[i]); });
     return row;
   });
 }
+// "2026Q2" -> "2026 Q2"
+function spaceQuarter(label) { return label ? label.replace('Q', ' Q') : label; }
 
 
 /* ---------------- DATE FORMATTERS ---------------- */
@@ -87,6 +96,25 @@ function baseLayout(yAxisTitle) {
 
 
 /* ---------------- FCI LINE ARRAYS (shared by line view + decomposition total) ---------------- */
+// FCI* linearly interpolated between the last quarterly estimate and the
+// one-quarter-ahead forecast (held flat beyond the forecast quarter-end).
+// Returns null when there is no forecast.
+function interpFcistar(dateStr) {
+  if (!FC) return null;
+  const lastQ = Q[Q.length - 1];
+  const f0 = lastQ.fcistar, t0 = new Date(lastQ.date).getTime();
+  const f1 = FC.fcistar, t1 = new Date(FC.date).getTime();
+  const t = new Date(dateStr).getTime();
+  if (t <= t0) return f0;
+  if (t >= t1) return f1;
+  return f0 + (f1 - f0) * (t - t0) / (t1 - t0);
+}
+// Post-last-quarter gap: difference from the interpolated FCI* forecast, so
+// Figure 2 = the vertical distance between the two lines in Figure 1. Without
+// a forecast, fall back to the backend-computed fci_gap.
+function gapOf(row) {
+  return FC ? row.fci - interpFcistar(row.date) : row.fci_gap;
+}
 function fciLineArrays() {
   const col = (a, c) => a.map(d => d[c]);
   const official = NC.filter(d => d.kind === 'official');
@@ -95,10 +123,10 @@ function fciLineArrays() {
   return {
     solidX: col(Q, 'date').concat(col(official, 'date')),
     fciSolid: col(Q, 'fci').concat(col(official, 'fci')),
-    gapSolid: col(Q, 'fci_gap').concat(col(official, 'fci_gap')),
+    gapSolid: col(Q, 'fci_gap').concat(official.map(gapOf)),  // Q rows keep their own gap
     dotX: [lastSolid.date].concat(col(nowc, 'date')),
     fciDot: [lastSolid.fci].concat(col(nowc, 'fci')),
-    gapDot: [lastSolid.fci_gap].concat(col(nowc, 'fci_gap')),
+    gapDot: [gapOf(lastSolid)].concat(nowc.map(gapOf)),
   };
 }
 
@@ -106,7 +134,7 @@ function fciLineArrays() {
 /* ---------------- FIGURE 1 TRACES ---------------- */
 function chart1LineTraces() {
   const L = fciLineArrays();
-  return [
+  const traces = [
     { x: L.solidX, y: L.fciSolid, name: 'FCI', type: 'scatter', mode: 'lines',
       line: { color: COLORS.fci, width: 2 }, hovertemplate: '%{y:.2f}<extra>FCI</extra>' },
     { x: L.dotX, y: L.fciDot, name: 'FCI (nowcast)', type: 'scatter', mode: 'lines', showlegend: false,
@@ -114,6 +142,17 @@ function chart1LineTraces() {
     { x: Q.map(d => d.date), y: Q.map(d => d.fcistar), name: 'FCI*', type: 'scatter', mode: 'lines',
       line: { color: COLORS.fcistar, width: 2.5 }, hovertemplate: '%{y:.2f}<extra>FCI*</extra>' },
   ];
+  if (FC) {
+    const lastQ = Q[Q.length - 1];
+    // dotted interpolation from the last estimate to the forecast, + a filled dot
+    traces.push({ x: [lastQ.date, FC.date], y: [lastQ.fcistar, FC.fcistar], type: 'scatter',
+      mode: 'lines', showlegend: false, line: { color: COLORS.fcistar, width: 2.5, dash: 'dot' },
+      hovertemplate: '%{y:.2f}<extra>FCI* · forecast</extra>' });
+    traces.push({ x: [FC.date], y: [FC.fcistar], type: 'scatter', mode: 'markers', showlegend: false,
+      marker: { color: COLORS.fcistar, size: 8 },
+      hovertemplate: '%{y:.2f}<extra>FCI* forecast · ' + spaceQuarter(FC.target_quarter) + '</extra>' });
+  }
+  return traces;
 }
 function chart1DecompTraces() {
   const sd = COMP_SOLID.map(r => r.date), nd = COMP_NOW.map(r => r.date);
@@ -164,11 +203,13 @@ function drawCharts() {
   ], { ...baseLayout('Percent'), shapes: [zeroLine()] }, PLOT_CONFIG);
 
   CHART_SERIES = {
-    [FCI_CHART]: [ { x: L.solidX, y: L.fciSolid }, { x: L.dotX, y: L.fciDot }, { x: Q.map(d => d.date), y: Q.map(d => d.fcistar) } ],
+    [FCI_CHART]: [ { x: L.solidX, y: L.fciSolid }, { x: L.dotX, y: L.fciDot }, { x: Q.map(d => d.date), y: Q.map(d => d.fcistar) },
+      ...(FC ? [{ x: [FC.date], y: [FC.fcistar] }] : []) ],
     'chart-fci-gap': [ { x: L.solidX, y: L.gapSolid }, { x: L.dotX, y: L.gapDot } ],
     'chart-ygap': [ { x: Q.map(d => d.date), y: Q.map(d => d.y_gap) } ],
   };
-  END_STR = L.dotX[L.dotX.length - 1];
+  const lastDot = L.dotX[L.dotX.length - 1];
+  END_STR = (FC && FC.date > lastDot) ? FC.date : lastDot;   // extend x-axis to the forecast dot
 
   // clicking the FCI line (or any point in Figure 1) toggles the decomposition view
   document.getElementById(FCI_CHART).on('plotly_click', () => setView(decompMode ? 'line' : 'decomp'));
@@ -246,14 +287,40 @@ function initViewToggle() {
 }
 
 
+/* ---------------- FORECAST HEADER + INLINE DETAIL ---------------- */
+function initForecast() {
+  const line = document.getElementById('forecast-header');
+  const bullet = document.getElementById('forecast-bullet');
+  if (!FC) return;   // no forecast -> leave the header line and bullet hidden
+
+  const qLabel = spaceQuarter(FC.target_quarter);
+  const qEl = document.getElementById('fcistar-forecast-quarter');
+  if (qEl) qEl.textContent = qLabel;
+  if (line) line.hidden = false;
+  if (bullet) bullet.hidden = false;
+
+  const detail = document.getElementById('forecast-detail-text');
+  if (detail) {
+    detail.textContent =
+      `${qLabel} SPF medians: real GDP growth ${FC.drgdp.toFixed(1)}%, core PCE inflation `
+      + `${FC.corepce.toFixed(1)}% (annualized), treated as realized and filtered one step ahead `
+      + `with fixed parameters → FCI* = ${FC.fcistar.toFixed(2)}.`;
+  }
+  const toggle = document.getElementById('forecast-details-toggle');
+  const panel = document.getElementById('forecast-detail');
+  if (toggle && panel) toggle.addEventListener('click', () => { panel.hidden = !panel.hidden; });
+}
+
+
 /* ---------------- MAIN ENTRY ---------------- */
 Promise.all([
   fetch(DATA_URL).then(r => r.text()),
   fetch(NOWCAST_URL).then(r => r.text()),
   fetch(COMP_URL).then(r => r.text()),
   fetch(META_URL).then(r => r.json()),
+  fetch(FORECAST_URL).then(r => r.ok ? r.text() : '').catch(() => ''),
 ])
-.then(([csvText, ncText, compText, meta]) => {
+.then(([csvText, ncText, compText, meta, fcText]) => {
   document.getElementById('last-updated-date').textContent   = formatQuarter(meta.sample_end);
   document.getElementById('last-refreshed-date').textContent = formatMonthYear(meta.last_updated);
   const nowcastEl = document.getElementById('nowcast-through-date');
@@ -264,7 +331,10 @@ Promise.all([
   const comp = parseCSV(compText);
   COMP_SOLID = comp.filter(d => d.kind !== 'nowcast');
   COMP_NOW   = comp.filter(d => d.kind === 'nowcast');
+  const fcRows = fcText ? parseCSV(fcText) : [];
+  FC = (fcRows.length && isFinite(fcRows[fcRows.length - 1].fcistar)) ? fcRows[fcRows.length - 1] : null;
 
+  initForecast();
   drawCharts();
   applyRange(RANGE);   // set explicit y-ranges (incl. zero line on the gap charts) on first paint
   initRangeButtons();

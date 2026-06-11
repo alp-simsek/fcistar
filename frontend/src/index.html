@@ -43,7 +43,9 @@
         &nbsp;·&nbsp;
         Last updated <span id="last-refreshed-date">—</span>
         &nbsp;·&nbsp;
-        FCI nowcast through <span id="nowcast-through-date">—</span>
+        FCI nowcast through <span id="nowcast-through-date">—</span><span id="forecast-header" hidden>
+        &nbsp;·&nbsp;
+        FCI<span class="star">*</span> forecast for <span id="fcistar-forecast-quarter">—</span></span>
       </p>
     </div>
   </header>
@@ -81,7 +83,11 @@
           <li>FCI combines seven financial variables. Click the line or
             <button type="button" class="pill inline-toggle" data-view="decomp">show the decomposition</button>
             to see each contribution.</li>
+          <li id="forecast-bullet" hidden>The dark-blue dot is a one-quarter-ahead FCI<span class="star">*</span>
+            forecast from the Survey of Professional Forecasters.
+            <button type="button" class="pill" id="forecast-details-toggle">see inputs</button></li>
         </ul>
+        <p class="chart-note note-line forecast-detail" id="forecast-detail" hidden><span id="forecast-detail-text"></span></p>
         <p class="chart-note note-decomp">Each bar is a variable's contribution to FCI; the nowcast is hatched.
           Click a bar or <button type="button" class="pill inline-toggle" data-view="line">back to FCI &amp; FCI*</button>.</p>
       </section>
@@ -97,8 +103,8 @@
         </p>
         <div id="chart-fci-gap"></div>
         <p class="chart-note">
-          The <span class="dotted-key">dotted</span> line extends the gap with the daily FCI nowcast, holding
-          FCI<span class="star">*</span> constant. <a href="nowcast.html" class="pill">How it's computed</a>
+          The <span class="dotted-key">dotted</span> line extends the gap as the FCI nowcast minus the
+          interpolated FCI<span class="star">*</span> forecast above.
         </p>
       </section>
 
