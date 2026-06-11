@@ -229,6 +229,40 @@ ul.chart-note li { margin-bottom: 5px; }
 body.decomp-on .note-line { display: none; }
 body.decomp-on .note-decomp { display: block; }
 
+/* Summary cards: quarter-end estimate for FCI / FCI* / FCI gap */
+.summary-cards { margin-bottom: 32px; }
+.summary-title {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.9rem;
+  color: #555;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.cards { display: flex; gap: 14px; }
+.card {
+  flex: 1;
+  background: #f7f9fc;
+  border: 1px solid #dde4ee;
+  border-radius: 5px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.card-label {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 4px;
+}
+.card-value { font-size: 1.9rem; color: #1a3a6b; line-height: 1.1; }
+.card-value.gap-loose { color: #1a6ba8; }   /* below neutral — looser */
+.card-value.gap-tight { color: #c0392b; }   /* above neutral — tighter */
+.card-sub {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.72rem;
+  color: #888;
+  margin-top: 5px;
+}
+
 /* Inline "see inputs" reveal under Figure 1 — the SPF forecast detail box */
 .forecast-detail {
   background: #f3f5f8;

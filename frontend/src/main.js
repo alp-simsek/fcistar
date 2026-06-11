@@ -115,18 +115,38 @@ function interpFcistar(dateStr) {
 function gapOf(row) {
   return FC ? row.fci - interpFcistar(row.date) : row.fci_gap;
 }
+// Daily dates strictly after `afterStr` through `throughStr` (inclusive).
+function rwTailDates(afterStr, throughStr) {
+  const out = [];
+  const through = new Date(throughStr);
+  let d = new Date(new Date(afterStr).getTime() + DAY);
+  while (d <= through) { out.push(d.toISOString().slice(0, 10)); d = new Date(d.getTime() + DAY); }
+  return out;
+}
 function fciLineArrays() {
   const col = (a, c) => a.map(d => d[c]);
   const official = NC.filter(d => d.kind === 'official');
   const nowc = NC.filter(d => d.kind === 'nowcast');
   const lastSolid = official.length ? official[official.length - 1] : Q[Q.length - 1];
+
+  const dotX = [lastSolid.date].concat(col(nowc, 'date'));
+  const fciDot = [lastSolid.fci].concat(col(nowc, 'fci'));
+  const gapDot = [gapOf(lastSolid)].concat(nowc.map(gapOf));
+  // Carry FCI flat (random walk) from the last nowcast day to the forecast
+  // quarter-end, so the FCI line reaches the same quarter-end as the FCI* dot.
+  let rwTail = [];
+  if (FC) {
+    const lastNow = nowc.length ? nowc[nowc.length - 1] : lastSolid;
+    rwTail = rwTailDates(lastNow.date, FC.date);
+    for (const d of rwTail) {
+      dotX.push(d); fciDot.push(lastNow.fci); gapDot.push(lastNow.fci - interpFcistar(d));
+    }
+  }
   return {
     solidX: col(Q, 'date').concat(col(official, 'date')),
     fciSolid: col(Q, 'fci').concat(col(official, 'fci')),
     gapSolid: col(Q, 'fci_gap').concat(official.map(gapOf)),  // Q rows keep their own gap
-    dotX: [lastSolid.date].concat(col(nowc, 'date')),
-    fciDot: [lastSolid.fci].concat(col(nowc, 'fci')),
-    gapDot: [gapOf(lastSolid)].concat(nowc.map(gapOf)),
+    dotX, fciDot, gapDot, rwTail,
   };
 }
 
@@ -144,19 +164,19 @@ function chart1LineTraces() {
   ];
   if (FC) {
     const lastQ = Q[Q.length - 1];
-    // FCI* extended one quarter as a DENSE dotted interpolation line: points at the
-    // last estimate, every nowcast/official date, and the forecast quarter-end. Dense
-    // points (vs a 2-point line) make x-unified hover behave like the FCI nowcast line
-    // and stay consistent with the Figure 2 gap. The filled dot marks the forecast
-    // point; its own hover is skipped so the line shows the value once (and the FCI
-    // nowcast, which ends earlier, never shows at the forecast date).
-    const fdates = [lastQ.date].concat(NC.map(d => d.date)).concat([FC.date]);
-    const fvals = fdates.map(d => interpFcistar(d));
-    traces.push({ x: fdates, y: fvals, type: 'scatter', mode: 'lines', showlegend: false,
-      line: { color: COLORS.fcistar, width: 2.5, dash: 'dot' },
+    // FCI* extended one quarter as a DENSE dotted interpolation line (points at every
+    // nowcast/official/RW-tail date so x-unified hover lines up with FCI and the
+    // Figure 2 gap), ending in a filled dot at the forecast quarter-end. The FCI line
+    // (L.dotX/L.fciDot) already runs flat to the same quarter-end; add its dot too.
+    // Both dots skip their own hover so each value shows once from the line.
+    const fdates = [lastQ.date].concat(NC.map(d => d.date)).concat(L.rwTail);
+    traces.push({ x: fdates, y: fdates.map(interpFcistar), type: 'scatter', mode: 'lines',
+      showlegend: false, line: { color: COLORS.fcistar, width: 2.5, dash: 'dot' },
       hovertemplate: '%{y:.2f}<extra>FCI* forecast · ' + spaceQuarter(FC.target_quarter) + '</extra>' });
     traces.push({ x: [FC.date], y: [FC.fcistar], type: 'scatter', mode: 'markers', showlegend: false,
       marker: { color: COLORS.fcistar, size: 8 }, hoverinfo: 'skip' });
+    traces.push({ x: [FC.date], y: [L.fciDot[L.fciDot.length - 1]], type: 'scatter', mode: 'markers',
+      showlegend: false, marker: { color: COLORS.fci, size: 8 }, hoverinfo: 'skip' });
   }
   return traces;
 }
@@ -293,6 +313,25 @@ function initViewToggle() {
 }
 
 
+/* ---------------- SUMMARY BOXES (quarter-end estimate) ---------------- */
+function fmtNum(v) { return (v < 0 ? '−' : '') + Math.abs(v).toFixed(2); }
+function initSummary() {
+  if (!FC) return;   // no forecast -> leave the cards hidden
+  const nowc = NC.filter(d => d.kind === 'nowcast');
+  const last = nowc.length ? nowc[nowc.length - 1] : Q[Q.length - 1];
+  const fci = last.fci, fcistar = FC.fcistar, gap = fci - fcistar;   // all at quarter-end
+  document.getElementById('card-fci').textContent     = fmtNum(fci);
+  document.getElementById('card-fcistar').textContent = fmtNum(fcistar);
+  const gapEl = document.getElementById('card-gap');
+  gapEl.textContent = fmtNum(gap);
+  gapEl.classList.add(gap < 0 ? 'gap-loose' : 'gap-tight');
+  document.getElementById('card-gap-sub').textContent =
+    gap < 0 ? 'looser than neutral' : (gap > 0 ? 'tighter than neutral' : 'at neutral');
+  document.getElementById('summary-quarter').textContent = spaceQuarter(FC.target_quarter);
+  document.getElementById('summary-cards').hidden = false;
+}
+
+
 /* ---------------- FORECAST HEADER + INLINE DETAIL ---------------- */
 function initForecast() {
   const line = document.getElementById('forecast-header');
@@ -342,6 +381,7 @@ Promise.all([
   FC = (fcRows.length && isFinite(fcRows[fcRows.length - 1].fcistar)) ? fcRows[fcRows.length - 1] : null;
 
   initForecast();
+  initSummary();
   drawCharts();
   applyRange(RANGE);   // set explicit y-ranges (incl. zero line on the gap charts) on first paint
   initRangeButtons();

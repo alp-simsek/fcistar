@@ -56,6 +56,28 @@
   <main>
     <div class="container">
 
+      <!-- Quarter-end estimate summary cards (shown when a forecast exists) -->
+      <section class="summary-cards" id="summary-cards" hidden>
+        <p class="summary-title">Our <span id="summary-quarter">—</span> estimate</p>
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">FCI</div>
+            <div class="card-value" id="card-fci">—</div>
+            <div class="card-sub">nowcast → quarter-end</div>
+          </div>
+          <div class="card">
+            <div class="card-label">FCI<span class="star">*</span></div>
+            <div class="card-value" id="card-fcistar">—</div>
+            <div class="card-sub">forecast</div>
+          </div>
+          <div class="card">
+            <div class="card-label">FCI gap</div>
+            <div class="card-value" id="card-gap">—</div>
+            <div class="card-sub" id="card-gap-sub">—</div>
+          </div>
+        </div>
+      </section>
+
       <!-- Global date-range control: changes x-axis on all three charts -->
       <nav class="range-buttons" aria-label="Date range">
         <span class="range-label">Range:</span>
@@ -78,8 +100,9 @@
         </p>
         <div id="chart-fci-and-star"></div>
         <ul class="chart-note note-line">
-          <li>The <span class="dotted-key">dotted</span> light blue line is a daily <strong>nowcast</strong>
-            extending FCI past the latest official release. <a href="nowcast.html" class="pill">How it's computed</a></li>
+          <li>The <span class="dotted-key">dotted</span> light blue line is a daily <strong>nowcast</strong> of FCI;
+            past the latest day it is held flat (a random walk) to the quarter-end dot.
+            <a href="nowcast.html" class="pill">How it's computed</a></li>
           <li id="forecast-bullet" hidden>The dark-blue dot is a one-quarter-ahead FCI<span class="star">*</span>
             forecast from the Survey of Professional Forecasters.
             <button type="button" class="pill" id="forecast-details-toggle">see inputs</button></li>
