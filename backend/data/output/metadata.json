@@ -4,6 +4,10 @@
   "sample_end": "2026-03-31",
   "last_quarter": "2026-03-31",
   "last_official_date": "2026-04-30",
-  "nowcast_through": "2026-06-09",
-  "fcistar_last": -0.779299
+  "nowcast_through": "2026-06-10",
+  "fcistar_last": -0.779299,
+  "fcistar_forecast": -0.771146,
+  "fcistar_forecast_through": "2026-06-30",
+  "spf_target_quarter": "2026Q2",
+  "spf_survey_quarter": "2026Q2"
 }
