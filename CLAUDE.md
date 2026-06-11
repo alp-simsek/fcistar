@@ -136,8 +136,47 @@ they should differ only in I/O paths and the output written for the frontend.
 Idea: keep the Fed's published FCI-G weights, feed daily public proxies, evaluate with trailing
 3-month windows; anchor to each official release. Output (interface contract): `fci_nowcast.csv`
 (date, fci, fci_gap, kind ∈ {official, nowcast}) for dates after the last estimated quarter, plus
-nowcast fields in `metadata.json`. `fcistar.csv` stays quarterly. The gap extension holds FCI* at its
-latest estimate (`fcistar_last`). A weekday cron runs the daily pipeline, commits if changed, redeploys.
+nowcast fields in `metadata.json`. `fcistar.csv` stays quarterly. A weekday cron runs the daily
+pipeline, commits if changed, redeploys.
+
+### One-quarter-ahead FCI\* forecast (extends FCI\* one quarter past the last estimate)
+
+The same daily cron also extends **FCI\*** one quarter past the last estimated quarter using Survey
+of Professional Forecasters (SPF) medians. `get_spf.py` (ported from the canonical research copy
+`code/empirics/SPF/`) fetches the Phil Fed median real-GDP-growth and core-PCE forecasts and selects
+the most recent survey covering the target quarter (falling back one quarter when the current survey
+isn't out yet, so the current quarter always has a forecast). `forecast_fcistar.py` (website-native)
+appends that quarter to the panel (`gdp_tot += drgdp/400`, `pce_core` as-is; FCI enters the
+measurement *lagged*, so no contemporaneous FCI is needed) and runs the Kalman filter **one step with
+the fixed parameters** (`theta_opt3.json` + the committed `forecast_inputs/` = `data_hlm.csv`,
+`covid_dummies.csv`, `filter_settings.json` with the exact `xi_0`/`P_0`). No re-estimation — that
+stays the monthly job. A reproduction gate asserts the in-sample filtered states match `fcistar.csv`
+to ~1e-12. Output: `fcistar_forecast.csv` (target_quarter, date, fcistar, y_gap, drgdp, corepce,
+survey_quarter, horizon) + metadata fields `fcistar_forecast`, `fcistar_forecast_through`,
+`spf_target_quarter`, `spf_survey_quarter` (null when no valid forecast → gap falls back to
+`fcistar_last`). One quarter only; multi-quarter would need the FCI nowcast in the lagged regressor.
+
+### DESIGN DECISION — the nowcast/forecast FCI gap (Figure 2)
+
+The plotted gap in the nowcast/forecast region is **`FCI_nowcast(t) − FCI*_interp(t)`**, where
+`FCI*_interp` is a **linear interpolation** between the last quarterly estimate (`fcistar_last`, at
+`last_quarter`) and the one-quarter-ahead forecast (`fcistar_forecast`, at `fcistar_forecast_through`),
+held flat beyond the forecast quarter-end. This makes Figure 2 exactly the vertical distance between
+the FCI and FCI\* lines in Figure 1, and matches how the historical charts already draw FCI\* (quarterly
+points connected by straight lines).
+
+This interpolation is done **in the frontend only** — the backend does NOT track an interpolated FCI\*.
+`build_fci_nowcast.py` still writes a `fci_gap` column in `fci_nowcast.csv` using a constant anchor
+(`fcistar_forecast` held flat), but the **chart recomputes the gap from `fci` + interpolated FCI\***,
+so the plotted gap is not the CSV column. The metadata endpoints (`fcistar_last`, `fcistar_forecast`
+and their dates) are what the frontend interpolates between.
+
+Known, intentional discrepancy (recorded so we don't rediscover it): this plotted nowcast gap —
+**daily FCI nowcast minus interpolated FCI\*** — is a *different object* from the historical quarterly
+gap, which is **(quarterly-average FCI) minus (quarterly FCI\*)**. They agree at the quarter-end knots
+but differ within a quarter, both because of frequency (daily vs quarter-average FCI) and because FCI\*
+is interpolated rather than the single quarterly value. This is deliberate and invisible to users; it
+is **not** explained on the methodology page.
 
 ---
 
