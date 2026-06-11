@@ -14,7 +14,9 @@ and adds nowcast fields to ../data/output/metadata.json.
 
 The FCI line is quarterly through the last estimated quarter (fcistar.csv), then MONTHLY official
 points, then DAILY nowcast. The components mirror that cadence and sum to FCI by construction. The
-gap holds FCI* at its latest estimate: fci_gap = fci - fcistar_last.
+gap is fci_gap = fci - FCI*; FCI* is constant within a quarter, so for the forecast quarter we
+anchor to the one-quarter-ahead FCI* forecast (fcistar_forecast.csv, from forecast_fcistar.py),
+falling back to the last quarterly estimate (fcistar_last) if no forecast is available.
 """
 from __future__ import annotations
 
@@ -37,10 +39,45 @@ OFF_COMP = {"FFR": "ffr", "10Yr Treasury": "t10yr", "Mortgage Rate": "mortgage",
 COMPS = list(OFF_COMP.values())
 
 
+FORECAST = SITE_OUT / "fcistar_forecast.csv"
+
+
 def main() -> None:
     fcistar = pd.read_csv(FCISTAR, parse_dates=["date"]).sort_values("date")
     last_quarter = fcistar["date"].max()
     fcistar_last = float(fcistar.loc[fcistar["date"] == last_quarter, "fcistar"].iloc[0])
+
+    # One-quarter-ahead FCI* forecast (forecast_fcistar.py). FCI* is constant
+    # within a quarter, so for the forecast quarter the gap is just
+    # gap(t) = FCI_nowcast(t) - FCI*_forecast for every date in the quarter --
+    # the same daily object as today, with the constant anchored to the
+    # SPF-informed forecast instead of the last estimate held flat. Fall back to
+    # fcistar_last if the forecast is missing or not exactly one quarter ahead.
+    gap_anchor = fcistar_last
+    # Always carry the four forecast keys (null when there is no valid forecast)
+    # so a missing/stale forecast can never leave stale values in metadata.json.
+    forecast_meta = {
+        "fcistar_forecast": None,
+        "fcistar_forecast_through": None,
+        "spf_target_quarter": None,
+        "spf_survey_quarter": None,
+    }
+    if FORECAST.exists():
+        fdf = pd.read_csv(FORECAST, parse_dates=["date"])
+        if not fdf.empty:
+            frow = fdf.iloc[-1]
+            fq = pd.Timestamp(frow["date"]).to_period("Q")
+            if fq == last_quarter.to_period("Q") + 1:
+                gap_anchor = float(frow["fcistar"])
+                forecast_meta = {
+                    "fcistar_forecast": round(gap_anchor, 6),
+                    "fcistar_forecast_through": pd.Timestamp(frow["date"]).strftime("%Y-%m-%d"),
+                    "spf_target_quarter": str(frow["target_quarter"]),
+                    "spf_survey_quarter": str(frow["survey_quarter"]),
+                }
+            else:
+                print(f"WARNING: forecast quarter {fq} is not one quarter past "
+                      f"{last_quarter.to_period('Q')}; holding FCI* flat for the gap.")
 
     off = pd.read_csv(OFFICIAL, parse_dates=["date"]).sort_values("date")
     off_by_month = off.set_index(off["date"].dt.to_period("M"))
@@ -49,11 +86,11 @@ def main() -> None:
     # ---- fci_nowcast.csv: recent monthly official + daily nowcast (total + gap) ----
     off_recent = off[off["date"] > last_quarter]
     official_rows = pd.DataFrame({"date": off_recent["date"], "fci": off_recent[OFFICIAL_INDEX_COL],
-                                  "fci_gap": off_recent[OFFICIAL_INDEX_COL] - fcistar_last, "kind": "official"})
+                                  "fci_gap": off_recent[OFFICIAL_INDEX_COL] - gap_anchor, "kind": "official"})
     last_official = official_rows["date"].max() if not official_rows.empty else last_quarter
     tail = daily[daily["date"] > last_official]
     nowcast_rows = pd.DataFrame({"date": tail["date"], "fci": tail["fci_g"],
-                                 "fci_gap": tail["fci_g"] - fcistar_last, "kind": "nowcast"})
+                                 "fci_gap": tail["fci_g"] - gap_anchor, "kind": "nowcast"})
     nowcast_through = nowcast_rows["date"].max() if not nowcast_rows.empty else last_official
 
     out = pd.concat([official_rows, nowcast_rows]).sort_values("date")
@@ -84,6 +121,7 @@ def main() -> None:
         "last_official_date": pd.Timestamp(last_official).strftime("%Y-%m-%d"),
         "nowcast_through": pd.Timestamp(nowcast_through).strftime("%Y-%m-%d"),
         "fcistar_last": round(fcistar_last, 6),
+        **forecast_meta,
     })
     META.write_text(json.dumps(meta, indent=2))
 
