@@ -301,10 +301,11 @@ function initForecast() {
 
   const detail = document.getElementById('forecast-detail-text');
   if (detail) {
+    const survey = spaceQuarter(FC.survey_quarter);
     detail.textContent =
-      `${qLabel} SPF medians: real GDP growth ${FC.drgdp.toFixed(1)}%, core PCE inflation `
-      + `${FC.corepce.toFixed(1)}% (annualized), treated as realized and filtered one step ahead `
-      + `with fixed parameters → FCI* = ${FC.fcistar.toFixed(2)}.`;
+      `Median SPF forecasts made in ${survey} for ${qLabel}: real GDP growth ${FC.drgdp.toFixed(1)}%, `
+      + `core PCE inflation ${FC.corepce.toFixed(1)}% (annualized). Treated as realized and filtered one `
+      + `step ahead with fixed parameters → FCI* = ${FC.fcistar.toFixed(2)}.`;
   }
   const toggle = document.getElementById('forecast-details-toggle');
   const panel = document.getElementById('forecast-detail');
