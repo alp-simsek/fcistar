@@ -1,20 +1,27 @@
 # =============================================================
 # Daily FCI nowcast
 #
-# Runs the daily FCI-G nowcast pipeline every weekday after the US
-# market close:
+# Runs the daily FCI-G nowcast + one-quarter-ahead FCI* forecast every
+# weekday after the US market close:
 #   1. get_fcig.py       pulls daily public proxies + the official
 #                        monthly FCI-G into backend/pipeline/data/.
 #   2. daily_backcast.py  trailing-window daily reconstruction.
 #   3. nowcast_fcig.py    anchors it to the official releases.
-#   4. build_fci_nowcast.py  writes the frontend contract
+#   4. get_spf.py         pulls the latest SPF median GDP/core-PCE forecasts.
+#   5. forecast_fcistar.py  extends FCI* one quarter past the last estimate
+#                           by running the Kalman filter one step with the
+#                           fixed parameters + committed forecast_inputs;
+#                           writes fcistar_forecast.csv.
+#   6. build_fci_nowcast.py  writes the frontend contract
 #                            backend/data/output/fci_nowcast.csv and
-#                            adds the nowcast fields to metadata.json.
+#                            adds the nowcast + forecast fields to metadata.json,
+#                            anchoring the forecast-quarter gap to FCI*_forecast.
 #
-# These scripts are ported from the research copy at
-# code/empirics/fcig/ (FCIstar Dropbox); keep the two in sync.
+# The nowcast scripts (get_fcig/daily_backcast/nowcast_fcig) are ported from
+# code/empirics/fcig/ and get_spf.py from code/empirics/SPF/ (FCIstar Dropbox);
+# keep those in sync. forecast_fcistar.py / build_fci_nowcast.py are website-native.
 #
-# If fci_nowcast.csv / metadata.json changed, commit + push to main.
+# If any committed output changed, commit + push to main.
 # That push triggers deploy.yml (via workflow_run) to redeploy the site.
 # Also runnable on demand (workflow_dispatch).
 # =============================================================
@@ -58,6 +65,8 @@ jobs:
           python get_fcig.py
           python daily_backcast.py
           python nowcast_fcig.py
+          python get_spf.py
+          python forecast_fcistar.py
           python build_fci_nowcast.py
 
       - name: Commit and push if the nowcast changed
@@ -65,7 +74,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add backend/data/output/fci_nowcast.csv backend/data/output/fci_components.csv backend/data/output/metadata.json
+          git add backend/data/output/fci_nowcast.csv backend/data/output/fci_components.csv backend/data/output/fcistar_forecast.csv backend/data/output/metadata.json
 
           if git diff --cached --quiet; then
             echo "No change to the nowcast."
