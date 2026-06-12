@@ -79,6 +79,8 @@ Promise.all([
   fetch(NOWCAST_URL).then(r => r.text()),
 ])
 .then(([sens, ncText]) => {
+  document.querySelectorAll('.js-target').forEach(e => e.textContent = spaceQuarter(sens.target_quarter));
+  document.querySelectorAll('.js-survey').forEach(e => e.textContent = spaceQuarter(sens.survey_quarter));
   buildCards(sens.target_quarter, lastNowcastFci(ncText), sens.fcistar.p50.p50);
   buildTable(sens);
 })
