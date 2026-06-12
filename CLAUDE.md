@@ -27,13 +27,71 @@ static images, and eventually multiple series (FCI\*, FCI-T, FCI gaps).
 
 **Vintages archive live and link shipped (2026-04-26).** Kentaro's `write_outputs` (commits `faa2aa7` / `055fd2b`) now also writes `fcistar_YYYY-MM-DD.csv` and `metadata_YYYY-MM-DD.json` into `backend/data/output/vintages/`, keyed by pipeline run date. Existing vintage files are never overwritten — the function raises `FileExistsError` if a file for the run date already exists. Folder was first populated by a manual local run today (commit `ac57496`). The header now includes a "Past vintages" link pointing to that folder on GitHub (commit `2acd548`). Email sent to Kentaro acknowledging; status update sent to Ricardo and Tomas.
 
-**Repo secret `FRED_API_KEY`** is set. Used by the monthly-update workflow.
+### Daily FCI nowcast + one-quarter-ahead FCI\* forecast + sensitivity (live, 2026-06)
+
+A large body of work shipped in June 2026, all auto-updating on a **weekday cron**
+(`.github/workflows/update-nowcast.yml`, 22:00 UTC Mon–Fri). The daily pipeline (in
+`backend/pipeline/`, run with `working-directory: backend/pipeline`) is:
+
+```
+get_fcig.py → daily_backcast.py → nowcast_fcig.py   (daily FCI-G nowcast)
+get_spf.py                                            (SPF medians + 25/75 percentiles)
+forecast_fcistar.py                                  (one-quarter FCI* forecast + 3×3 sensitivity)
+build_fci_nowcast.py                                 (frontend contract + metadata)
+```
+
+What's live on https://fcistar.org:
+
+1. **Daily FCI nowcast.** FCI (the FCI-G index) is extended past the last official monthly
+   release to the latest market day, as a dotted light-blue line on Figure 1 (and the gap on
+   Figure 2). Detailed in the "Daily FCI-G nowcast" section below.
+2. **One-quarter-ahead FCI\* forecast.** FCI\* is extended one quarter past the last estimated
+   quarter using SPF median GDP-growth / core-PCE forecasts fed through the Kalman filter one
+   step with fixed parameters (no re-estimation). Shown as a dark-blue dotted interpolation line
+   to a filled dot on Figure 1. Detailed in "One-quarter-ahead FCI\* forecast" below.
+3. **Summary boxes** above the charts ("Our \<quarter\> estimate"): FCI, FCI\*, FCI gap at the
+   **quarter-end** of the forecast quarter. FCI = the nowcast carried **flat (random walk)** to
+   quarter-end; FCI\* = the forecast; gap = their difference. Both lines end in a filled dot at
+   quarter-end, so the boxes are exactly the right edge of the charts. See the "DESIGN DECISION"
+   section for why we report the quarter-end forecast (not the interpolated daily value or the
+   quarter-average), and the gap-interpolation note.
+4. **Sensitivity page** (`sensitivity.html`, linked from the summary cards): a 3×3 heatmap of
+   FCI\* over the SPF 25/50/75 percentiles of GDP growth × core PCE. See the "Sensitivity grid"
+   paragraph below.
+
+**Canonical research copies (FCIstar Dropbox, NOT in this repo):** the FCI-G nowcast scripts are
+ported from `code/empirics/fcig/`; `get_spf.py` from `code/empirics/SPF/`. Those are canonical —
+change them there first, then port (the ports differ only in I/O paths). `forecast_fcistar.py` and
+`build_fci_nowcast.py` are website-native (they depend on the estimation code).
+
+**Monthly cron interaction:** the monthly estimation (`estimate_CCS_struct.py`) commits a
+`forecast_inputs/` artifact (`data_hlm.csv`, `covid_dummies.csv`, `filter_settings.json` = exact
+`xi_0`/`P_0`) that the daily `forecast_fcistar.py` reads, so the daily forecast runs the filter with
+the same fixed parameters **without re-assembling FRED or re-estimating**. Both crons MERGE into
+`metadata.json` (never overwrite) so neither clobbers the other's fields — see the 2026-06 fix that
+added this after a monthly run wiped the nowcast fields.
+
+**Robustness fixes from this work:** added FRED 429 retry/backoff + inter-series sleep to
+`assemble_data.py` (monthly cron had been failing); bumped `actions/checkout@v5` /
+`setup-python@v6` (Node 24) across workflows; `metadata.json` merge in both crons.
+
+**Repo secret `FRED_API_KEY`** is set. Used by both the monthly-update and daily-nowcast workflows.
 
 ---
 
 ## Outstanding Items
 
-- **(Roadmap, not yet scheduled)** Confidence intervals for FCI\* and the FCI gap; 1–4 quarter forecasts; mixed-frequency display with monthly FCI alongside quarterly FCI\*; eventually FCI-T.
+- **Done (2026-06):** daily FCI nowcast; one-quarter-ahead FCI\* forecast; quarter-end summary
+  boxes; FCI\* sensitivity over SPF percentiles. See the dated status block above.
+- **(Natural next extension)** **Multi-quarter FCI\* forecast.** The current forecast is one quarter
+  only. Going to two+ quarters needs: (a) SPF forecasts at further horizons (already in
+  `spf_forecasts.csv`, horizons 0–4), and (b) the FCI nowcast in the **lagged** regressor — because
+  FCI enters the measurement lagged, the step for quarter Q+2 needs `FCI_{Q+1}`, which is not yet
+  realized, so the FCI random-walk nowcast finally feeds the filter itself (not just the gap). It's
+  a clean layer on top of `one_step()` in `forecast_fcistar.py` (iterate, carrying the appended
+  quarter forward). Also think about how to present the widening uncertainty.
+- **(Roadmap, not yet scheduled)** Confidence intervals for FCI\* and the FCI gap; mixed-frequency
+  display with monthly FCI alongside quarterly FCI\*; eventually FCI-T.
 - **(Not for Claude — PI discussion)** Tomas raised a research question about adapting the model to Goldman vs. FCI-G and the levels-vs-differences issue. That's for Alp, Ricardo, and Tomas to work through.
 
 ---
@@ -194,14 +252,27 @@ is **not** explained on the methodology page.
 
 **Stack:** Plain HTML/CSS/JS + **Plotly.js** (CDN, no build step).
 
-**Files in `frontend/src/`:** `index.html`, `main.js`, `style.css`, `CNAME`.
+**Files in `frontend/src/`:** `index.html`, `main.js`, `style.css`, `CNAME`, plus two extra pages:
+`nowcast.html` ("How the FCI nowcast is computed") and `sensitivity.html` + `sensitivity.js`
+(the FCI\* sensitivity heatmap). All four HTML/JS files and `style.css` are copied + path-rewritten
+by `deploy.yml`.
 
-**Charts (all quarterly, all Plotly):**
-- `chart-fci-and-star` — FCI and FCI\*
-- `chart-fci-gap` — FCI gap (FCI − FCI\*)
-- `chart-ygap` — Output gap
+**Charts (Plotly), all in `index.html` / `main.js`:**
+- `chart-fci-and-star` — FCI and FCI\* (Figure 1). Two views toggled by clicking the line or the
+  inline pill: line view (FCI + FCI\*, each solid → dotted forecast extension) and decomposition
+  view (7 signed stacked bars + black total). FCI extends as a daily nowcast then flat RW to
+  quarter-end; FCI\* extends as a dotted interpolation to a forecast dot. Hover is `x unified`;
+  the forecast traces are dense (one point per date) with the dots' own hover skipped so each
+  value shows once.
+- `chart-fci-gap` — FCI gap (Figure 2). Gap = FCI − interpolated FCI\* (recomputed in the
+  frontend, `gapOf()`), so it equals the vertical distance between the two Figure 1 lines.
+- `chart-ygap` — Output gap (Figure 3), unchanged.
 
-**Header:** title, two-paragraph description, authors, link row (`Read the paper · Download data (CSV) · Backend code`), then `Estimates through YYYY QN · Last updated Month YYYY`.
+**Summary boxes** (`#summary-cards`, shown when a forecast exists) sit above the charts; a
+"Sensitivity analysis" pill under them links to `sensitivity.html`.
+
+**Header:** title, description, authors, link row, then
+`Estimates through YYYY QN · Last updated Month YYYY · FCI nowcast through <date> · FCI* forecast for <quarter>`.
 
 **Interactivity:**
 - Global date-range selector above the charts: `1Y / 5Y / 10Y / 20Y / All`, rescales all three charts simultaneously via `Plotly.relayout` on `CHART_IDS`.
@@ -227,11 +298,13 @@ is **not** explained on the methodology page.
 
 **Hosting:** GitHub Pages from the repo above
 
-**Two workflows, chained:**
+**Three workflows, chained:**
 
-1. `.github/workflows/update-data.yml` — monthly cron (`0 6 1 * *`, ~06:00 UTC on the 1st) plus `workflow_dispatch` for manual runs. Installs deps from `backend/pipeline/requirements.txt`, runs `assemble_data.py` then `estimate_CCS_struct.py` (the latter with `cwd=backend/pipeline` so its `from _aux_fun.…` imports resolve), stages `backend/data/output/`, commits as `github-actions[bot]` only if there's a diff, then pushes.
+1. `.github/workflows/update-data.yml` ("Monthly data update") — monthly cron (`0 18 1 * *`, 18:00 UTC on the 1st — timed after the Fed republishes FCI-G ~14:00 UTC) plus `workflow_dispatch`. Installs deps, runs `assemble_data.py` then `estimate_CCS_struct.py` (with `working-directory: backend/pipeline` so its `from _aux_fun.…` imports resolve), stages `backend/data/output/` (which now includes `forecast_inputs/`), commits as `github-actions[bot]` only if there's a diff, then pushes.
 
-2. `.github/workflows/deploy.yml` — assembles `_site/` (copies frontend + `backend/data/output/` into a `data/` subdir, rewrites `../../backend/data/output/` → `data/` via sed), deploys to GitHub Pages. Triggers on `push: main` **and** on `workflow_run` completion of "Monthly data update" — the `workflow_run` path is required because pushes made with `GITHUB_TOKEN` don't fire the push trigger (GitHub anti-loop rule). A guard on the deploy job skips deploy if the upstream update run failed.
+2. `.github/workflows/update-nowcast.yml` ("Daily FCI nowcast") — weekday cron (`0 22 * * 1-5`, 22:00 UTC after the US market close) plus `workflow_dispatch`. Runs the daily pipeline (get_fcig → daily_backcast → nowcast_fcig → get_spf → forecast_fcistar → build_fci_nowcast) in `backend/pipeline`, needs `FRED_API_KEY`, and commits `fci_nowcast.csv, fci_components.csv, fcistar_forecast.csv, fcistar_sensitivity.json, metadata.json` if changed.
+
+3. `.github/workflows/deploy.yml` — assembles `_site/` (copies the frontend HTML/JS + `style.css` + the `backend/data/output/` files into a `data/` subdir, rewrites `../../backend/data/output/` → `data/` via sed on `main.js` / `sensitivity.js` / `index.html`), deploys to GitHub Pages. Triggers on `push: main` **and** on `workflow_run` completion of "Monthly data update" **and** "Daily FCI nowcast" — the `workflow_run` paths are required because pushes made with `GITHUB_TOKEN` don't fire the push trigger (GitHub anti-loop rule). A guard skips deploy if the upstream run failed.
 
 **If the folder structure changes, update the "Assemble site" step in `deploy.yml` accordingly.**
 
@@ -255,17 +328,44 @@ date, fci, fcistar, fci_gap, y_gap
 ```
 (dates in YYYY-MM-DD, end-of-quarter; `fci_gap` = FCI − FCI\*)
 
-**`metadata.json`** — pipeline run information:
+**`metadata.json`** — run information from the monthly estimation AND the daily nowcast/forecast
+(both crons MERGE into this file, never overwrite):
 ```json
 {
-  "last_updated": "YYYY-MM-DD",
-  "sample_start": "YYYY-MM-DD",
-  "sample_end": "YYYY-MM-DD"
+  "last_updated": "YYYY-MM-DD", "sample_start": "YYYY-MM-DD", "sample_end": "YYYY-MM-DD",
+  "last_quarter": "YYYY-MM-DD", "last_official_date": "YYYY-MM-DD", "nowcast_through": "YYYY-MM-DD",
+  "fcistar_last": -0.78,
+  "fcistar_forecast": -0.77, "fcistar_forecast_through": "YYYY-MM-DD",
+  "spf_target_quarter": "YYYYQn", "spf_survey_quarter": "YYYYQn"
 }
 ```
-`sample_end` drives "Estimates through YYYY QN"; `last_updated` drives "Last updated Month YYYY". Both in the header.
+`sample_end` → "Estimates through YYYY QN"; `last_updated` → "Last updated Month YYYY";
+`nowcast_through` → "FCI nowcast through <date>"; `spf_target_quarter` → "FCI\* forecast for <quarter>".
+The four `fcistar_forecast*` / `spf_*` keys are **null** when there is no valid forecast (then the gap
+falls back to `fcistar_last`).
 
-**`theta_opt3.json`** — fitted parameter vector from the Kalman estimation. Not consumed by the frontend; kept in git for reproducibility/debugging.
+**`fci_nowcast.csv`** — `date, fci, fci_gap, kind` (kind ∈ {official, nowcast}) for dates after the
+last estimated quarter (recent monthly official FCI-G, then daily nowcast). Written by
+`build_fci_nowcast.py`. The frontend recomputes the displayed gap via interpolated FCI\*, so the
+`fci_gap` column here is informational (constant-anchor).
+
+**`fci_components.csv`** — `date, kind, ffr, t10yr, mortgage, bbb, stock, house, dollar` (kind ∈
+{quarter, official, nowcast}) — the 7-factor FCI decomposition for Figure 1's decomposition view.
+
+**`fcistar_forecast.csv`** — one row: `target_quarter, date, fcistar, y_gap, drgdp, corepce,
+survey_quarter, horizon` — the one-quarter-ahead FCI\* forecast (median SPF). Written by
+`forecast_fcistar.py`.
+
+**`fcistar_sensitivity.json`** — the 3×3 FCI\* sensitivity grid:
+`{target_quarter, survey_quarter, gdp{p25,p50,p75}, corepce{p25,p50,p75}, fcistar[inflPct][gdpPct]}`.
+Written by `forecast_fcistar.py`; rendered by `sensitivity.html`/`sensitivity.js`.
+
+**`forecast_inputs/`** — `data_hlm.csv`, `covid_dummies.csv`, `filter_settings.json` (exact
+`xi_0`/`P_0` + spec). Committed by the MONTHLY estimation; read by the daily `forecast_fcistar.py`
+so it can run the one-step filter with fixed parameters without re-assembling/re-estimating.
+
+**`theta_opt3.json`** — fitted parameter vector from the Kalman estimation. Read by
+`forecast_fcistar.py` (the fixed θ); kept in git for reproducibility/debugging.
 
 **`fci_star_results.xlsx`** — Excel bundle written by the estimation. Gitignored (pattern `backend/data/output/*.xlsx`), regenerated each run.
 
