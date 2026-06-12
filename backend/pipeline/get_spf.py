@@ -59,9 +59,11 @@ HERE = Path(__file__).resolve().parent
 RAW_DIR = HERE / "data" / "spf" / "raw"
 OUT_DIR = HERE / "data" / "spf" / "output"
 
-# Phil Fed SPF data files. The `hash` query parameter is part of the published
-# download URL; if the Phil Fed re-publishes a file the hash changes, so a 404
-# here is the signal to refresh these URLs.
+# Phil Fed SPF data files. The `hash` query parameter is just a CDN cache-busting
+# token and is NOT enforced -- the base path serves the CURRENT file regardless of
+# (or without) the hash, so new survey rows are picked up automatically on each run.
+# These URLs only need updating if the Phil Fed renames/moves a file or changes its
+# sheet layout (get_spf would then error loudly, the real signal).
 SERIES = {
     "drgdp": {
         "name": "Real GDP growth (annualized %, median)",
