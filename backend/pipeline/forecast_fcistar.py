@@ -122,42 +122,20 @@ def append_forecast_quarter(
     return data_ext, covid_ext
 
 
-def run() -> pd.DataFrame:
-    settings = load_settings()
-    theta = load_theta()
-
-    data_hlm = pd.read_csv(FINPUTS / "data_hlm.csv", parse_dates=["date"])
-    covid_dummies = pd.read_csv(FINPUTS / "covid_dummies.csv", parse_dates=["date"])
-
-    last_q = pd.Timestamp(settings["last_quarter"])
-    ly, lq = last_q.year, (last_q.month - 1) // 3 + 1
-    ty, tq = next_quarter(ly, lq)
-    target_label = f"{ty}Q{tq}"
-    logger.info("Last estimated quarter %dQ%d -> forecasting %s", ly, lq, target_label)
-
-    panel = pd.read_csv(SPF_CSV)
-    fc = latest_forecast_for(panel, ty, tq)
-    if fc is None or fc["drgdp"] is None or fc["corepce"] is None:
-        raise RuntimeError(f"No SPF forecast available for {target_label}.")
-    logger.info(
-        "SPF for %s: drgdp=%.4f corepce=%.4f (from %s survey, horizon %d)",
-        target_label, fc["drgdp"], fc["corepce"], fc["survey_quarter"], fc["horizon"],
-    )
-
-    data_ext, covid_ext = append_forecast_quarter(
-        data_hlm, covid_dummies, ty, tq, fc["drgdp"], fc["corepce"]
-    )
-
-    # Rebuild the step-3 matrices. recent_data==3 auto-extends the sample end to
-    # the latest available quarter, which is now the appended forecast quarter.
+def one_step(data_hlm, covid_dummies, settings, theta, target_year, target_q, drgdp, corepce):
+    """
+    Append the forecast quarter with the given SPF GDP/inflation inputs, run the
+    Kalman filter one step with fixed theta + committed xi_0/P_0, and return the
+    full step-3 output series (the last row is the forecast quarter).
+    """
+    data_ext, covid_ext = append_forecast_quarter(data_hlm, covid_dummies, target_year, target_q, drgdp, corepce)
+    # recent_data==3 auto-extends the sample end to the latest available quarter,
+    # which is now the appended forecast quarter.
     inputs = build_step3_matrices(
-        data_hlm=data_ext,
-        covid_dummies_df=covid_ext,
-        recent_data=int(settings["recent_data"]),
-        set_covid_2022=bool(settings["set_covid_2022"]),
+        data_hlm=data_ext, covid_dummies_df=covid_ext,
+        recent_data=int(settings["recent_data"]), set_covid_2022=bool(settings["set_covid_2022"]),
         sample_end_decimal=None,
     )
-
     filter_settings = {
         "detrend_y": int(settings["detrend_y"]),
         "smoother": 0,  # the forecast only needs the filtered (one-sided) state
@@ -167,23 +145,19 @@ def run() -> pd.DataFrame:
         "fixed_param": np.asarray(settings["fixed_param"], dtype=float),
         "covid_dummies": inputs["covid_dummies"],
     }
-
     # The filter's covariance recursion emits benign floating-point warnings on
     # the COVID quarters (huge measurement variance) -- they occur identically in
     # the in-sample estimation and don't affect the (finite) state estimates.
-    # Silence them here so the daily forecast log stays readable.
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
         estimates = evaluate_kalman_covid(
-            inputs["y_mat"],
-            inputs["x_mat_step3"],
-            theta,
-            map_theta_to_mats_CCS_struct_step3_backward_inf,
-            filter_settings,
+            inputs["y_mat"], inputs["x_mat_step3"], theta,
+            map_theta_to_mats_CCS_struct_step3_backward_inf, filter_settings,
         )
+    return build_output_series(theta_opt3=theta, estimates_step3=estimates, inputs=inputs)
 
-    df = build_output_series(theta_opt3=theta, estimates_step3=estimates, inputs=inputs)
 
-    # Correctness gate: the in-sample part must reproduce the committed FCI*.
+def check_reproduction(df) -> None:
+    """Gate: the in-sample part must reproduce the committed FCI* exactly."""
     committed = pd.read_csv(OUT_DIR / "fcistar.csv")
     insample = df.iloc[:-1].reset_index(drop=True)
     if len(insample) != len(committed):
@@ -199,35 +173,81 @@ def run() -> pd.DataFrame:
             f"(max diff {max_diff:.3e} > tol {REPRO_TOL:.0e})."
         )
 
-    frow = df.iloc[-1]
-    forecast = pd.DataFrame(
-        [
-            {
-                "target_quarter": target_label,
-                "date": frow["date"],
-                "fcistar": round(float(frow["fcistar"]), 6),
-                "y_gap": round(float(frow["y_gap"]), 6),
-                "drgdp": fc["drgdp"],
-                "corepce": fc["corepce"],
-                "survey_quarter": fc["survey_quarter"],
-                "horizon": fc["horizon"],
-            }
-        ]
-    )
-    return forecast
+
+# percentile label -> the suffix on the SPF column (median column has no suffix)
+PCTS = [("p25", "_p25"), ("p50", ""), ("p75", "_p75")]
+
+
+def _spf_val(fc, var, suffix):
+    return fc[var] if suffix == "" else fc[f"{var}{suffix}"]
+
+
+def sensitivity_grid(data_hlm, covid_dummies, settings, theta, ty, tq, fc) -> dict:
+    """
+    3x3 grid of FCI*: rows = core-PCE percentile, cols = real-GDP-growth percentile.
+    grid[inflation_pct][gdp_pct] = FCI*. The p50/p50 cell equals the headline forecast.
+    """
+    grid = {}
+    for ilab, isuf in PCTS:                      # core PCE -> rows
+        corepce = _spf_val(fc, "corepce", isuf)
+        grid[ilab] = {}
+        for glab, gsuf in PCTS:                  # GDP growth -> columns
+            drgdp = _spf_val(fc, "drgdp", gsuf)
+            df = one_step(data_hlm, covid_dummies, settings, theta, ty, tq, drgdp, corepce)
+            grid[ilab][glab] = round(float(df.iloc[-1]["fcistar"]), 6)
+    return grid
 
 
 def main() -> None:
-    forecast = run()
-    out_path = OUT_DIR / "fcistar_forecast.csv"
-    forecast.to_csv(out_path, index=False)
-    row = forecast.iloc[0]
-    logger.info("Wrote %s", out_path)
-    logger.info(
-        "FORECAST %s (%s): FCI* = %.4f, y_gap = %.4f  [SPF %s, h=%d]",
-        row["target_quarter"], row["date"], row["fcistar"], row["y_gap"],
-        row["survey_quarter"], int(row["horizon"]),
-    )
+    settings = load_settings()
+    theta = load_theta()
+    data_hlm = pd.read_csv(FINPUTS / "data_hlm.csv", parse_dates=["date"])
+    covid_dummies = pd.read_csv(FINPUTS / "covid_dummies.csv", parse_dates=["date"])
+
+    last_q = pd.Timestamp(settings["last_quarter"])
+    ly, lq = last_q.year, (last_q.month - 1) // 3 + 1
+    ty, tq = next_quarter(ly, lq)
+    target_label = f"{ty}Q{tq}"
+    logger.info("Last estimated quarter %dQ%d -> forecasting %s", ly, lq, target_label)
+
+    panel = pd.read_csv(SPF_CSV)
+    fc = latest_forecast_for(panel, ty, tq)
+    if fc is None or fc["drgdp"] is None or fc["corepce"] is None:
+        raise RuntimeError(f"No SPF forecast available for {target_label}.")
+    logger.info("SPF for %s: drgdp=%.4f corepce=%.4f (from %s survey, horizon %d)",
+                target_label, fc["drgdp"], fc["corepce"], fc["survey_quarter"], fc["horizon"])
+
+    # ---- headline (median) forecast, with the reproduction gate ----
+    df = one_step(data_hlm, covid_dummies, settings, theta, ty, tq, fc["drgdp"], fc["corepce"])
+    check_reproduction(df)
+    frow = df.iloc[-1]
+    pd.DataFrame([{
+        "target_quarter": target_label, "date": frow["date"],
+        "fcistar": round(float(frow["fcistar"]), 6), "y_gap": round(float(frow["y_gap"]), 6),
+        "drgdp": fc["drgdp"], "corepce": fc["corepce"],
+        "survey_quarter": fc["survey_quarter"], "horizon": fc["horizon"],
+    }]).to_csv(OUT_DIR / "fcistar_forecast.csv", index=False)
+    logger.info("FORECAST %s (%s): FCI* = %.4f, y_gap = %.4f  [SPF %s, h=%d]",
+                target_label, frow["date"], frow["fcistar"], frow["y_gap"],
+                fc["survey_quarter"], int(fc["horizon"]))
+
+    # ---- sensitivity grid (needs all three percentiles for both variables) ----
+    have_pcts = all(fc.get(c) is not None for c in
+                    ("drgdp_p25", "drgdp_p75", "corepce_p25", "corepce_p75"))
+    if not have_pcts:
+        logger.warning("SPF percentiles missing; skipping the sensitivity grid.")
+        return
+    grid = sensitivity_grid(data_hlm, covid_dummies, settings, theta, ty, tq, fc)
+    sens = {
+        "target_quarter": target_label,
+        "survey_quarter": fc["survey_quarter"],
+        "gdp": {"p25": fc["drgdp_p25"], "p50": fc["drgdp"], "p75": fc["drgdp_p75"]},
+        "corepce": {"p25": fc["corepce_p25"], "p50": fc["corepce"], "p75": fc["corepce_p75"]},
+        "fcistar": grid,   # fcistar[core-PCE pct][GDP-growth pct]
+    }
+    (OUT_DIR / "fcistar_sensitivity.json").write_text(json.dumps(sens, indent=2))
+    logger.info("Sensitivity 3x3 written; p50/p50 cell FCI* = %.4f (matches headline %.4f)",
+                grid["p50"]["p50"], round(float(frow["fcistar"]), 6))
 
 
 if __name__ == "__main__":

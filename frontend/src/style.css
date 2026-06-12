@@ -263,6 +263,23 @@ body.decomp-on .note-decomp { display: block; }
   margin-top: 5px;
 }
 
+.summary-link { text-align: center; margin-top: 12px; }
+
+/* Sensitivity page table (3x3 FCI* over SPF percentiles) */
+.sens-table {
+  border-collapse: collapse;
+  margin: 4px auto 0;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.sens-table th, .sens-table td { border: 1px solid #dde4ee; padding: 8px 16px; text-align: center; }
+.sens-table .corner { border: none; background: #fff; }
+.sens-table th { background: #f0f3f8; color: #333; font-weight: normal; font-size: 0.85rem; }
+.sens-table .grouphdr { background: #1a3a6b; color: #fff; font-size: 0.85rem; }
+.sens-table .grouphdr.rot { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.sens-table .pctval { display: block; font-size: 0.72rem; color: #888; }
+.sens-table td.cell { font-size: 1.05rem; color: #1a3a6b; }
+.sens-table td.center { box-shadow: inset 0 0 0 2px #1a3a6b; font-weight: bold; }
+
 /* Inline "see inputs" reveal under Figure 1 — the SPF forecast detail box */
 .forecast-detail {
   background: #f3f5f8;

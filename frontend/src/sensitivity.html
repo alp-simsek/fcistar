@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FCI* sensitivity — FCI*</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <header>
+    <div class="container">
+      <h1>FCI<span class="star">*</span> sensitivity</h1>
+      <p class="subtitle">
+        How the one-quarter-ahead FCI<span class="star">*</span> forecast depends on the macro forecast it
+        conditions on.
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+
+      <p class="back-nav"><a href="index.html" class="pill">Back to FCI*</a></p>
+
+      <section class="chart-section">
+        <h2>The idea</h2>
+        <p class="chart-description">
+          The FCI<span class="star">*</span> forecast treats the latest Survey of Professional Forecasters (SPF)
+          forecasts for real GDP growth and core PCE inflation as if they were realized, and runs the model's filter
+          one quarter forward. Forecasters disagree, though. The table below recomputes
+          FCI<span class="star">*</span> at the 25th, 50th, and 75th percentiles of the SPF forecasts &mdash; rows are
+          inflation, columns are GDP growth &mdash; so you can see how much the estimate leans on the macro inputs.
+        </p>
+      </section>
+
+      <section class="chart-section">
+        <h2>Current estimate (<span id="sens-quarter">—</span>)</h2>
+        <div class="cards" id="sens-cards"></div>
+      </section>
+
+      <section class="chart-section">
+        <h2>FCI<span class="star">*</span> across SPF percentiles</h2>
+        <div id="sens-table"></div>
+        <p class="chart-note">
+          Each cell is FCI<span class="star">*</span> if real GDP growth and core PCE inflation came in at the given SPF
+          percentiles (annualized %). The center cell is the headline forecast. The percentiles are cross-forecaster
+          disagreement, not an outcome probability.
+        </p>
+      </section>
+
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p class="footer-note">© 2026 Caballero, Caravello, and Simsek</p>
+    </div>
+  </footer>
+
+  <script src="sensitivity.js"></script>
+</body>
+</html>

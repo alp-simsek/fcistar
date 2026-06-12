@@ -156,6 +156,16 @@ survey_quarter, horizon) + metadata fields `fcistar_forecast`, `fcistar_forecast
 `spf_target_quarter`, `spf_survey_quarter` (null when no valid forecast → gap falls back to
 `fcistar_last`). One quarter only; multi-quarter would need the FCI nowcast in the lagged regressor.
 
+**Sensitivity grid.** `get_spf.py` also pulls the SPF cross-sectional dispersion files
+(`Dispersion_RGDP.xlsx` sheet D2 = Q/Q-growth 25th/75th percentiles; `Dispersion_COREPCE.xlsx`
+sheet D1 = level 25th/75th), so `spf_forecasts.csv` carries `drgdp/corepce` at the 25/50/75
+percentiles. `forecast_fcistar.py` then runs the one-step filter over the 3×3 grid (rows = core-PCE
+percentile, cols = GDP-growth percentile) and writes `fcistar_sensitivity.json`
+(`{target_quarter, survey_quarter, gdp{p25,p50,p75}, corepce{p25,p50,p75}, fcistar[infl][gdp]}`);
+the p50/p50 cell equals the headline forecast. `sensitivity.html` + `sensitivity.js` render it as a
+heatmap table, linked from the summary cards on the main page. The percentiles are forecaster
+disagreement, not an outcome distribution.
+
 ### DESIGN DECISION — the nowcast/forecast FCI gap (Figure 2)
 
 The plotted gap in the nowcast/forecast region is **`FCI_nowcast(t) − FCI*_interp(t)`**, where
