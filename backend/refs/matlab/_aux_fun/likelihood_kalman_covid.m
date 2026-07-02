@@ -40,6 +40,7 @@ A = matrices.A;
 H = matrices.H;
 Q = matrices.Q;
 R = matrices.R;
+
 kappa_seq = matrices.kappa_seq;
 
 settings.smoother = 0;
