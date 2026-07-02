@@ -89,21 +89,23 @@ GSW = {
     "skiprows_search": "Date",   # find the header row that starts with this token
 }
 
-# Equity proxy: FT Wilshire 5000 Full Cap (^W5000) from Yahoo's keyless chart API. This is the
-# total-market index the Fed uses (Dow Jones U.S. Total Stock Market = ^DWCF is the exact name and
-# equivalent, but ^W5000 runs back to 1989). Reproduces the published Stock factor at slope ~1.00,
-# R^2 ~0.996 — far closer than the S&P 500 (slope 0.96). FRED dropped its Wilshire series.
+# Equity proxy: the Fed's total-market stock index. ^DWCF (Dow Jones U.S. Total Stock Market) is
+# the EXACT index the FCI-G uses and Yahoo keeps it current, so it is the primary/live source.
+# ^DWCF only starts in 1995, so we backfill the pre-1995 history with ^W5000 (FT Wilshire 5000,
+# the same index back to 1989). The two are numerically the same index (daily log-return corr
+# 0.998, level ratio ~1.00 on their 1995-2026 overlap) and reproduce the published Stock factor at
+# slope ~1.00, R^2 ~0.996 — far closer than the S&P 500 (slope 0.96). FRED dropped its Wilshire
+# series, so Yahoo is the source for both.
 #
-# Yahoo stopped updating ^W5000 on 2026-06-26 while ^DWCF stays current. Because ^W5000 sets the
-# daily nowcast grid (daily_backcast.py), a frozen tail stalls the whole nowcast. We therefore
-# extend ^W5000's tail with ^DWCF (near-identical index: daily log-return corr 0.998, level ratio
-# ~1.00 over the 1995-2026 overlap) by carrying ^DWCF's returns onto the last ^W5000 level. Only
-# 3-month log-CHANGES of this series enter the FCI, so the constant ~1% level offset cancels and
-# the splice adds no jump. See fetch_yahoo_equity.
+# History note: ^W5000 was originally the primary (for its 1989 start), but Yahoo froze ^W5000 on
+# 2026-06-26, which stalled the whole nowcast because ^W5000 set the daily grid (daily_backcast.py).
+# ^DWCF is the maintained series, so it is now the base and ^W5000 supplies only the frozen pre-1995
+# tail — a dead ^W5000 no longer affects the live edge. The stored file keeps the name
+# wilshire5000.csv (downstream refers to it by that local name). See fetch_yahoo_equity.
 YAHOO_EQUITY = {
     "local_name": "wilshire5000",
-    "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EW5000",
-    "tail_url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EDWCF",
+    "url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EDWCF",           # primary + live tail
+    "history_url": "https://query1.finance.yahoo.com/v8/finance/chart/%5EW5000",  # pre-1995 backfill only
 }
 
 # Zillow national ZHVI (monthly). URL VERIFY-AT-RUNTIME: Zillow rotates these public CSV paths.
@@ -216,31 +218,32 @@ def _yahoo_chart(session: requests.Session, url: str) -> pd.Series:
 
 
 def fetch_yahoo_equity(session: requests.Session) -> pd.Series:
-    """FT Wilshire 5000 (^W5000) daily close, tail-extended by ^DWCF when ^W5000 lags.
+    """Fed total-market equity index: ^DWCF, backfilled before its 1995 start with ^W5000.
 
-    ^W5000 carries the deep history (1989+) but Yahoo froze it on 2026-06-26; ^DWCF is the same
-    index and stays current. For dates after ^W5000's last print we set
-        wilshire(d) = wilshire(last) * dwcf(d) / dwcf(last),
-    i.e. carry ^DWCF's returns forward from the handoff. The FCI uses only 3-month log-CHANGES, so
-    the level offset cancels and this adds no jump. If ^DWCF is unavailable or not ahead of ^W5000,
-    the series is returned unchanged.
+    ^DWCF (Dow Jones U.S. Total Stock Market — the exact index the FCI-G uses) is the live source
+    of truth. It starts in 1995, so for dates before ^DWCF's first print we splice in ^W5000 (the
+    same index back to 1989), anchored to ^DWCF at ^DWCF's start by ratio:
+        wilshire(d) = dwcf(start) * w5(d) / w5(start)   for d < start.
+    The FCI uses only 3-month log-CHANGES, so the ~1% level offset cancels and the join adds no
+    jump. ^W5000 is frozen at Yahoo (last print 2026-06-26) but that no longer matters — it feeds
+    only the unchanging pre-1995 history. If ^W5000 is unavailable, ^DWCF alone (1995+) is used.
     """
-    w5 = _yahoo_chart(session, YAHOO_EQUITY["url"])
-    tail_url = YAHOO_EQUITY.get("tail_url")
-    if tail_url:
+    dw = _yahoo_chart(session, YAHOO_EQUITY["url"])
+    history_url = YAHOO_EQUITY.get("history_url")
+    if history_url:
         try:
-            dw = _yahoo_chart(session, tail_url)
-            last = w5.index.max()
-            anchor = dw.asof(last)
-            tail = dw.index[dw.index > last]
-            if len(tail) and pd.notna(anchor) and anchor > 0:
-                ext = float(w5.loc[last]) * dw.loc[tail] / float(anchor)
-                w5 = pd.concat([w5, ext]).sort_index()
-        except Exception as exc:  # noqa: BLE001 — keep ^W5000 if the extension fails
+            w5 = _yahoo_chart(session, history_url)
+            start = dw.index.min()
+            anchor = w5.asof(start)
+            pre = w5.index[w5.index < start]
+            if len(pre) and pd.notna(anchor) and anchor > 0:
+                hist = float(dw.loc[start]) * w5.loc[pre] / float(anchor)
+                dw = pd.concat([hist, dw]).sort_index()
+        except Exception as exc:  # noqa: BLE001 — ^DWCF (1995+) alone if the backfill fails
             logging.getLogger("get_fcig").warning(
-                "^DWCF tail extension failed (%s); using ^W5000 through %s only",
-                exc, w5.index.max().date())
-    return w5
+                "^W5000 history backfill failed (%s); using ^DWCF from %s only",
+                exc, dw.index.min().date())
+    return dw
 
 
 def fetch_zillow_zhvi(session: requests.Session) -> pd.Series:
