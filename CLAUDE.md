@@ -197,6 +197,21 @@ Idea: keep the Fed's published FCI-G weights, feed daily public proxies, evaluat
 nowcast fields in `metadata.json`. `fcistar.csv` stays quarterly. A weekday cron runs the daily
 pipeline, commits if changed, redeploys.
 
+**Equity source — `^DWCF` primary, `^W5000` pre-1995 backfill (fixed 2026-07-02).** The stock
+proxy (`wilshire5000.csv`, from Yahoo's keyless chart API) sets the daily nowcast grid in
+`daily_backcast.py` (`days = _load_daily("wilshire5000").index`), so whatever the equity series'
+last date is caps the whole nowcast. Yahoo **froze the `^W5000` (FT Wilshire 5000) ticker on
+2026-06-26**, which silently stalled the nowcast at 06-26 — the weekday cron kept *succeeding* but
+produced no new dates, so "commit if changed" made no commit and the site froze without any error.
+Fix: `fetch_yahoo_equity` now uses **`^DWCF` (Dow Jones U.S. Total Stock Market — the exact index
+the FCI-G uses) as the primary/live source**, and splices `^W5000` on only for the **pre-1995
+history** `^DWCF` lacks (anchored by ratio at `^DWCF`'s 1995 start; only 3-month log-changes enter
+the FCI, so the ~1% level offset cancels and the join is seamless). A dead `^W5000` no longer
+affects the live edge; falls back to `^DWCF`-only if `^W5000` disappears. Same-index check: daily
+log-return corr 0.998, level ratio ~1.00; month-end validation vs official FCI-G corr ~0.998.
+Watch-out for the future: if `^DWCF` ever also stalls, the whole nowcast freezes again silently —
+consider a cron alert if `nowcast_through` doesn't advance for N weekdays.
+
 ### One-quarter-ahead FCI\* forecast (extends FCI\* one quarter past the last estimate)
 
 The same daily cron also extends **FCI\*** one quarter past the last estimated quarter using Survey
