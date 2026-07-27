@@ -46,6 +46,7 @@ let Q, NC, COMP_SOLID, COMP_NOW;   // parsed data
 let FC = null;                     // one-quarter-ahead FCI* forecast row (or null)
 let CHART_SERIES = {};             // line-mode y-range series per chart
 let END_STR = null;                // latest date across series
+let FCI_AT_FC = null;              // FCI value at forecast quarter-end (for dot + summary)
 let RANGE = 'all';                 // current x-range selection
 let decompMode = false;            // Figure 1 view
 
@@ -123,6 +124,31 @@ function rwTailDates(afterStr, throughStr) {
   while (d <= through) { out.push(d.toISOString().slice(0, 10)); d = new Date(d.getTime() + DAY); }
   return out;
 }
+// Determine the FCI value at the forecast quarter-end. When the forecast quarter
+// is still in the future, this is the last nowcast value (carried flat = random walk).
+// When the forecast quarter is already past, we have actual nowcast data at that date,
+// so use it — the light blue dot lines up with the dotted nowcast line.
+function computeFciAtFc() {
+  FCI_AT_FC = null;
+  if (!FC) return;
+  const nowc = NC.filter(d => d.kind === 'nowcast');
+  const official = NC.filter(d => d.kind === 'official');
+  const lastSolid = official.length ? official[official.length - 1] : Q[Q.length - 1];
+  const lastNow = nowc.length ? nowc[nowc.length - 1] : lastSolid;
+  const fcTime = new Date(FC.date).getTime();
+  const lastNowTime = new Date(lastNow.date).getTime();
+  if (lastNowTime <= fcTime) {
+    FCI_AT_FC = lastNow.fci;
+  } else {
+    // Nowcast extends past the forecast quarter-end — look up actual value
+    const allDotRows = [lastSolid].concat(nowc);
+    for (let i = allDotRows.length - 1; i >= 0; i--) {
+      if (allDotRows[i].date <= FC.date) { FCI_AT_FC = allDotRows[i].fci; break; }
+    }
+    if (FCI_AT_FC === null) FCI_AT_FC = lastNow.fci;
+  }
+}
+
 function fciLineArrays() {
   const col = (a, c) => a.map(d => d[c]);
   const official = NC.filter(d => d.kind === 'official');
@@ -175,7 +201,7 @@ function chart1LineTraces() {
       hovertemplate: '%{y:.2f}<extra>FCI* forecast · ' + spaceQuarter(FC.target_quarter) + '</extra>' });
     traces.push({ x: [FC.date], y: [FC.fcistar], type: 'scatter', mode: 'markers', showlegend: false,
       marker: { color: COLORS.fcistar, size: 8 }, hoverinfo: 'skip' });
-    traces.push({ x: [FC.date], y: [L.fciDot[L.fciDot.length - 1]], type: 'scatter', mode: 'markers',
+    traces.push({ x: [FC.date], y: [FCI_AT_FC], type: 'scatter', mode: 'markers',
       showlegend: false, marker: { color: COLORS.fci, size: 8 }, hoverinfo: 'skip' });
   }
   return traces;
@@ -317,9 +343,7 @@ function initViewToggle() {
 function fmtNum(v) { return (v < 0 ? '−' : '') + Math.abs(v).toFixed(2); }
 function initSummary() {
   if (!FC) return;   // no forecast -> leave the cards hidden
-  const nowc = NC.filter(d => d.kind === 'nowcast');
-  const last = nowc.length ? nowc[nowc.length - 1] : Q[Q.length - 1];
-  const fci = last.fci, fcistar = FC.fcistar, gap = fci - fcistar;   // all at quarter-end
+  const fci = FCI_AT_FC, fcistar = FC.fcistar, gap = fci - fcistar;   // all at quarter-end
   document.getElementById('card-fci').textContent     = fmtNum(fci);
   document.getElementById('card-fcistar').textContent = fmtNum(fcistar);
   const gapEl = document.getElementById('card-gap');
@@ -381,6 +405,7 @@ Promise.all([
   FC = (fcRows.length && isFinite(fcRows[fcRows.length - 1].fcistar)) ? fcRows[fcRows.length - 1] : null;
 
   initForecast();
+  computeFciAtFc();
   initSummary();
   drawCharts();
   applyRange(RANGE);   // set explicit y-ranges (incl. zero line on the gap charts) on first paint
