@@ -17,15 +17,27 @@ static images, and eventually multiple series (FCI\*, FCI-T, FCI gaps).
 
 ---
 
-## Current Status (as of 2026-04-26)
+## Current Status (as of 2026-08-03)
+
+> **If you are picking this up cold, read [THE CROSS-CRON INVARIANT](#the-cross-cron-invariant-2026-08-03--read-this-before-touching-either-workflow)
+> first.** It is the failure mode this project actually has: the two cron jobs own different files,
+> and every bug that has reached the live site so far has been a disagreement between them, not an
+> error inside any one script.
 
 **Site is live and fully auto-updating.** https://fcistar.org shows three interactive Plotly charts (FCI & FCI\*, FCI gap, output gap), a global date-range selector (1Y / 5Y / 10Y / 20Y / All) that rescales all charts simultaneously, and a header showing "Estimates through YYYY QN · Last updated Month YYYY".
 
-**Pipeline runs automatically on the 1st of each month** (06:00 UTC). It pulls fresh FRED, FCI-G, and HLW data, runs Kentaro's Kalman estimation, commits any output changes, and auto-redeploys the site via the `workflow_run` chain in `deploy.yml`.
+**Pipeline runs automatically on the 1st of each month** (**18:00 UTC** — moved from 06:00 after the
+2026-05-01 run pulled a not-yet-republished FCI-G file). It pulls fresh FRED, FCI-G, and HLW data,
+runs Kentaro's Kalman estimation, **then re-runs the full daily nowcast/forecast chain** (2026-08-03
+— see the cross-cron invariant below), commits any output changes, and auto-redeploys the site via
+the `workflow_run` chain in `deploy.yml`.
 
-**Current sample end:** 2025Q4. Advances dynamically — the `sample_window` function in `estimate_CCS_struct.py` now reads the latest available quarter from `data_hlm.csv` when `recent_data=3` (commit `aa3401a`).
+**Current sample end:** 2026Q2 (FCI\* = −0.8459), forecast quarter 2026Q3 (−0.8377). Advances
+dynamically — the `sample_window` function in `estimate_CCS_struct.py` reads the latest available
+quarter from `data_hlm.csv` when `recent_data=3` (commit `aa3401a`), and `write_outputs` now refuses
+to publish a sample end EARLIER than the one already published.
 
-**Vintages archive live and link shipped (2026-04-26).** Kentaro's `write_outputs` (commits `faa2aa7` / `055fd2b`) now also writes `fcistar_YYYY-MM-DD.csv` and `metadata_YYYY-MM-DD.json` into `backend/data/output/vintages/`, keyed by pipeline run date. Existing vintage files are never overwritten — the function raises `FileExistsError` if a file for the run date already exists. Folder was first populated by a manual local run today (commit `ac57496`). The header now includes a "Past vintages" link pointing to that folder on GitHub (commit `2acd548`). Email sent to Kentaro acknowledging; status update sent to Ricardo and Tomas.
+**Vintages archive live and link shipped (2026-04-26).** Kentaro's `write_outputs` (commits `faa2aa7` / `055fd2b`) now also writes `fcistar_YYYY-MM-DD.csv` and `metadata_YYYY-MM-DD.json` into `backend/data/output/vintages/`, keyed by pipeline run date. Existing vintage files are never overwritten — but as of 2026-08-03 a same-day re-run no longer raises `FileExistsError` (which blocked the one thing you do to repair a broken run): identical output is skipped, and different output is archived as `fcistar_<date>_rN.csv`. Folder was first populated by a manual local run today (commit `ac57496`). The header now includes a "Past vintages" link pointing to that folder on GitHub (commit `2acd548`). Email sent to Kentaro acknowledging; status update sent to Ricardo and Tomas.
 
 ### Daily FCI nowcast + one-quarter-ahead FCI\* forecast + sensitivity (live, 2026-06)
 
@@ -62,7 +74,7 @@ What's live on https://fcistar.org:
    the dotted nowcast line rather than jumping to a future date's value. Once the monthly
    estimation advances the sample past that quarter, the forecast shifts to the next quarter
    (in the future) and the normal random-walk behavior resumes. See `computeFciAtFc()` in
-   `main.js`.
+   `main.js`, and "Forecast-quarter regimes" under Frontend Status for the captions that go with it.
 4. **Sensitivity page** (`sensitivity.html`, linked from the summary cards): a 3×3 heatmap of
    FCI\* over the SPF 25/50/75 percentiles of GDP growth × core PCE. See the "Sensitivity grid"
    paragraph below.
@@ -133,6 +145,11 @@ printing a number rather than producing NaNs.
 
 - **Done (2026-06):** daily FCI nowcast; one-quarter-ahead FCI\* forecast; quarter-end summary
   boxes; FCI\* sensitivity over SPF percentiles. See the dated status block above.
+- **Done (2026-08-03):** the superseded-forecast bug (commits `22f4103`, `1c849a9`, `da0133c`) —
+  monthly cron now regenerates the daily artifacts; four guards on the forecast-quarter invariant;
+  `sample_end` cannot regress; same-day re-runs possible; raw-feed staleness check; regime-aware
+  captions on Figures 1–2 and the `nowcast.html` gap section corrected (it had described pre-2026-06
+  behaviour). Reported by Ricardo and Tomas after the 2026-08-01 monthly run.
 - **(Natural next extension)** **Multi-quarter FCI\* forecast.** The current forecast is one quarter
   only. Going to two+ quarters needs: (a) SPF forecasts at further horizons (already in
   `spf_forecasts.csv`, horizons 0–4), and (b) the FCI nowcast in the **lagged** regressor — because
@@ -333,15 +350,47 @@ by `deploy.yml`.
   frontend, `gapOf()`), so it equals the vertical distance between the two Figure 1 lines.
 - `chart-ygap` — Output gap (Figure 3), unchanged.
 
-**Summary boxes** (`#summary-cards`, shown when a forecast exists) sit above the charts; a
-"Sensitivity analysis" pill under them links to `sensitivity.html`.
+**Summary boxes** (`#summary-cards`) sit above the charts; a "Sensitivity analysis" pill under them
+links to `sensitivity.html`. With a forecast they show FCI / FCI\* / gap at the forecast quarter-end;
+without one they fall back to the **last actual quarter** straight from `fcistar.csv`, the sub-labels
+change ("quarter average" / "estimate") and the sensitivity pill hides. They are never left showing a
+superseded forecast next to an actual estimate for the same quarter.
+
+### Forecast-quarter regimes — captions and the FCI dot (2026-08-03)
+
+The forecast quarter is `last estimated quarter + 1`, and a quarter's GDP prints about a month after
+it ends. So **for roughly one month in three the forecast quarter has already ended in calendar
+time** (2026Q2 was the target for all of July 2026). Two regimes, and code and copy must agree:
+
+| | quarter-end still ahead | quarter already ended, GDP not out |
+|---|---|---|
+| FCI at quarter-end | last nowcast carried flat (random walk) | **actual** nowcast value on that date |
+| dot position | right edge, ahead of the data | on the dotted line, with nowcast continuing to its right |
+| `rwTail` | non-empty (the flat tail) | **empty** — nothing is held flat |
+
+`computeFciAtFc()` decides this and sets `FC_PAST_QUARTER`; **that flag is the single definition of
+the regime** — `setForecastRegimeNotes()` and the summary-card sub-label both read it, so the dot
+placement and the prose describing it cannot disagree. (The dot half shipped 2026-07-27 as commit
+`3e7b62e`; the captions were left asserting the future-quarter behaviour unconditionally until
+`1c849a9`.)
+
+Caption copy lives in `index.html` as paired `<span class="regime-current">` / `<span
+class="regime-past" hidden>` elements — three pairs: Figure 1 bullets 1 and 2, and the Figure 2
+note. Edit the wording there, not in JS. `setForecastRegimeNotes()` only flips `hidden` and fills
+`.js-forecast-quarter`. `nowcast.html` has no JS, so its equivalent sentences are worded to hold in
+**both** regimes instead ("*When the forecast quarter-end is still ahead*, we carry the last
+value forward…").
+
+Past the forecast dot, `interpFcistar()` holds FCI\* flat at the forecast value for all later dates,
+so the dark-blue dotted line runs horizontally to the right edge. Deliberately left unexplained on
+the site — FCI\* is a slow-moving quarterly object and it reads as self-evident (Alp, 2026-08-03).
 
 **Header:** title, description, authors, link row, then
 `Estimates through YYYY QN · Last updated Month YYYY · FCI nowcast through <date> · FCI* forecast for <quarter>`.
 
 **Interactivity:**
 - Global date-range selector above the charts: `1Y / 5Y / 10Y / 20Y / All`, rescales all three charts simultaneously via `Plotly.relayout` on `CHART_IDS`.
-- Each chart's y-axis recomputes from data within the visible x-window (Plotly's built-in `yaxis.autorange` considers all data, which is why we compute y-range manually in `visibleYRange()`).
+- Each chart's y-axis recomputes from data within the visible x-window (Plotly's built-in `yaxis.autorange` considers all data, which is why we compute y-range manually in `lineYRange()` / `decompYRange()`).
 - X-axis tick labels adapt to zoom via `tickformatstops`: year-only at long zoom, "Mon YYYY" at short zoom. Hover always shows full quarter-end date via `hoverformat: '%B %-d, %Y'`.
 
 **Data loading:** `main.js` fetches `../../backend/data/output/fcistar.csv` + `metadata.json` relative to the page. The deploy workflow rewrites these to `data/` for production. **Never hardcode estimates.**
@@ -419,7 +468,11 @@ last estimated quarter (recent monthly official FCI-G, then daily nowcast). Writ
 
 **`fcistar_forecast.csv`** — one row: `target_quarter, date, fcistar, y_gap, drgdp, corepce,
 survey_quarter, horizon` — the one-quarter-ahead FCI\* forecast (median SPF). Written by
-`forecast_fcistar.py`.
+`forecast_fcistar.py`. **OPTIONAL — this file and `fcistar_sensitivity.json` may legitimately be
+absent.** `build_fci_nowcast.py` deletes them once the forecast quarter has been superseded by an
+actual estimate; `deploy.yml` therefore copies both conditionally, and `main.js` tolerates a 404
+(`r.ok ? r.text() : ''`) and falls back to the last actual quarter. Do not "fix" any of those three
+by assuming the file is always there.
 
 **`fcistar_sensitivity.json`** — the 3×3 FCI\* sensitivity grid:
 `{target_quarter, survey_quarter, gdp{p25,p50,p75}, corepce{p25,p50,p75}, fcistar[inflPct][gdpPct]}`.
