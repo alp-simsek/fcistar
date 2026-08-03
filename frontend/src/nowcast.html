@@ -56,9 +56,9 @@
           the data available then, it recovers the print the Fed releases weeks later.
         </p>
         <p class="chart-description">
-          Beyond the latest available day, we carry the last value forward unchanged (a random walk) to the
-          quarter&#8209;end &mdash; the flat tail of the dotted line &mdash; so it lines up with the FCI* forecast
-          and the summary boxes.
+          When the forecast quarter&#8209;end is still ahead, we carry the last value forward unchanged (a random
+          walk) to it &mdash; the flat tail of the dotted line &mdash; so it lines up with the FCI* forecast and the
+          summary boxes.
         </p>
       </section>
 
@@ -95,9 +95,9 @@
       <section class="chart-section">
         <h2>The gap</h2>
         <p class="chart-description">
-          The FCI gap (FCI minus FCI*) is extended with the daily FCI nowcast, holding FCI* constant. FCI* is the
-          slow&#8209;moving neutral level, so holding it fixed over the short nowcast horizon is a mild assumption;
-          it updates when the quarterly FCI* estimation re&#8209;runs.
+          The FCI gap (FCI minus FCI*) is extended with the daily FCI nowcast. Over that stretch FCI* is
+          interpolated from the last quarterly estimate to the one&#8209;quarter&#8209;ahead forecast, so the dotted
+          gap is exactly the vertical distance between the two lines in the FCI and FCI* chart.
         </p>
       </section>
 
