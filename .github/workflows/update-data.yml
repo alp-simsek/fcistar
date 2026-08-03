@@ -6,6 +6,8 @@
 #                        quarterly panel.
 #   2. estimate_CCS_struct.py  runs the Kalman estimation and
 #                              writes backend/data/output/.
+#   3. the FULL daily nowcast/forecast chain, re-run on top of the new
+#      estimates (see "Refresh the nowcast" below for why).
 #
 # If any output file changed, the workflow commits and pushes to
 # main. That push then triggers deploy.yml, which redeploys the
@@ -57,6 +59,30 @@ jobs:
       - name: Run estimation
         working-directory: backend/pipeline
         run: python estimate_CCS_struct.py
+
+      # The estimation advances the last estimated quarter, which invalidates
+      # EVERY artifact the daily cron owns: fcistar_forecast.csv still targets
+      # the quarter that just printed as an actual, and fci_nowcast.csv /
+      # fci_components.csv still start their monthly-official rows after the
+      # PREVIOUS last quarter, so they overlap the quarterly series. Committing
+      # the estimation on its own publishes that inconsistent bundle and the
+      # deploy ships it -- the site then shows a superseded SPF forecast next to
+      # the actual estimate for the same quarter, with the charts doubling back
+      # on themselves, until the next weekday nowcast run repairs it (up to 3
+      # days when the 1st falls on a weekend -- 2026-08-01 did exactly this).
+      # Re-running the daily chain here makes the monthly update one atomic,
+      # internally consistent commit.
+      - name: Refresh the nowcast and forecast on top of the new estimates
+        working-directory: backend/pipeline
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+        run: |
+          python get_fcig.py
+          python daily_backcast.py
+          python nowcast_fcig.py
+          python get_spf.py
+          python forecast_fcistar.py
+          python build_fci_nowcast.py
 
       - name: Commit and push if outputs changed
         run: |

@@ -710,6 +710,31 @@ def write_outputs(fcistar_df: pd.DataFrame, theta_opt3: np.ndarray) -> None:
         "sample_end": str(fcistar_df["date"].iloc[-1]),
     }
 
+    # The published sample must never move BACKWARDS. It can: assemble_data.py
+    # trims to the last quarter for which every input exists, so one late or
+    # stale upstream file (the 2026-05-01 run pulled a not-yet-republished FCI-G
+    # and produced 2025Q4 instead of 2026Q1) silently retracts a quarter that has
+    # already been published -- and everything downstream would then agree with
+    # each other on the wrong quarter. The cron time was moved to work around
+    # that; this check is what actually catches it.
+    prev_end = None
+    published_path = out_dir / "fcistar.csv"
+    if published_path.exists():
+        try:
+            prev_end = pd.Timestamp(
+                pd.read_csv(published_path, parse_dates=["date"])["date"].iloc[-1]
+            )
+        except (ValueError, KeyError, IndexError, OSError):
+            prev_end = None
+    new_end = pd.Timestamp(fcistar_df["date"].iloc[-1])
+    if prev_end is not None and new_end < prev_end:
+        raise RuntimeError(
+            f"Refusing to publish: the new sample ends {new_end.date()} but the currently "
+            f"published fcistar.csv ends {prev_end.date()}. An input is stale or late "
+            "(check the FCI-G download and the FRED series in assemble_data.py) -- publishing "
+            "would retract an already-published quarter."
+        )
+
     # Current files read by the frontend
     fcistar_df.to_csv(out_dir / "fcistar.csv", index=False)
     # The daily nowcast pipeline (build_fci_nowcast.py) adds its own keys to this
@@ -734,11 +759,29 @@ def write_outputs(fcistar_df: pd.DataFrame, theta_opt3: np.ndarray) -> None:
     vintage_fcistar_path = vint_dir / f"fcistar_{run_date}.csv"
     vintage_metadata_path = vint_dir / f"metadata_{run_date}.json"
 
+    # Archived vintages are immutable -- an existing file is never overwritten.
+    # But a same-day re-run has to stay possible: it is exactly what you do to
+    # repair a failed or half-published run, and raising here would leave the
+    # live site broken until the next scheduled cron. So re-archive under a _rN
+    # suffix instead, and skip entirely when the output is byte-identical.
     if vintage_fcistar_path.exists() or vintage_metadata_path.exists():
-        raise FileExistsError(
-            f"Vintage files for run date {run_date} already exist in {vint_dir}. "
-            "Refusing to overwrite archived vintages."
+        if (
+            vintage_fcistar_path.exists()
+            and vintage_fcistar_path.read_text(encoding="utf-8") == fcistar_df.to_csv(index=False)
+        ):
+            get_logger().info(
+                "Vintage %s already archived and unchanged; not re-archiving.", run_date
+            )
+            return
+        rerun = 2
+        while (vint_dir / f"fcistar_{run_date}_r{rerun}.csv").exists():
+            rerun += 1
+        get_logger().warning(
+            "Vintage files for run date %s already exist with different content; "
+            "archiving this re-run as _r%d instead of overwriting.", run_date, rerun
         )
+        vintage_fcistar_path = vint_dir / f"fcistar_{run_date}_r{rerun}.csv"
+        vintage_metadata_path = vint_dir / f"metadata_{run_date}_r{rerun}.json"
 
     fcistar_df.to_csv(vintage_fcistar_path, index=False, mode="x")
     with open(vintage_metadata_path, "x", encoding="utf-8") as f:

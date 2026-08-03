@@ -323,6 +323,52 @@ def update_raw(only: list[str] | None, full: bool, logger: logging.Logger) -> di
     return meta
 
 
+# Maximum age (calendar days, vs the newest observation across all series) before a
+# raw input is treated as stale. The nowcast averages over trailing windows, so a feed
+# that quietly stops updating does NOT produce gaps or NaNs -- its factor simply freezes
+# and the daily number keeps printing as if it were live. Nothing else in the pipeline
+# would notice, so check it here. `strict` series drive the day-to-day movement: if they
+# are stale the nowcast is not a nowcast, and it is better to keep yesterday's published
+# numbers than to publish a frozen one.
+STALENESS_LIMITS = {                    # local_name: (max_age_days, strict)
+    "wilshire5000": (5, True),          # equities, daily (usually same-day)
+    # FRED publishes DFF/DGS10 with a ~1-business-day lag, so a long weekend already
+    # puts them 4-5 days back on a normal run -- 7 keeps the strict check from firing
+    # on holidays while still catching a feed that has actually stopped.
+    "dff": (7, True),                   # fed funds, daily
+    "dgs10": (7, True),                 # 10y CMT, daily (bridges svenpy10's lagging tail)
+    "bbb": (7, False),                  # ICE BBB, daily but occasionally lags
+    "obmmi30": (7, False),              # Optimal Blue, daily
+    "dollar_broad": (14, False),        # broad USD index, published with a lag
+    "svenpy10": (14, False),            # GSW, ~1 week behind by construction
+    "dbaa": (7, False),
+    "mortgage30us": (14, False),        # weekly survey
+    "zillow_zhvi": (45, False),         # monthly
+}
+
+
+def check_freshness(meta: dict, logger: logging.Logger) -> None:
+    """Warn (or fail) when a raw input has silently stopped updating."""
+    if not meta:
+        return
+    asof = max(pd.Timestamp(m["last_date"]) for m in meta.values())
+    stale_strict = []
+    for name, m in sorted(meta.items()):
+        limit, strict = STALENESS_LIMITS.get(name, (30, False))
+        age = (asof - pd.Timestamp(m["last_date"])).days
+        if age > limit:
+            logger.warning("STALE %-14s last=%s (%d days behind %s; limit %d)",
+                           name, m["last_date"], age, asof.date(), limit)
+            if strict:
+                stale_strict.append(f"{name} last={m['last_date']} ({age}d)")
+    if stale_strict:
+        raise RuntimeError(
+            "Core daily inputs are stale: " + "; ".join(stale_strict) + ". The nowcast would "
+            "freeze these factors and still print a value for today; refusing to update. "
+            "Check the source URLs / FRED series in get_fcig.py."
+        )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Incremental data fetch for the daily FCI-G nowcast.")
     ap.add_argument("--only", nargs="*", default=None, help="subset of raw series local-names")
@@ -337,6 +383,7 @@ def main() -> None:
     logger.info("Done. Updated %d raw series.", len(meta))
     for name, m in sorted(meta.items()):
         logger.info("  %-14s last=%s  n=%d", name, m["last_date"], m["n_obs"])
+    check_freshness(meta, logger)
 
 
 if __name__ == "__main__":

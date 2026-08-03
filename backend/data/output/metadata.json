@@ -2,12 +2,12 @@
   "last_updated": "2026-08-01",
   "sample_start": "1990-06-30",
   "sample_end": "2026-06-30",
-  "last_quarter": "2026-03-31",
+  "last_quarter": "2026-06-30",
   "last_official_date": "2026-06-30",
-  "nowcast_through": "2026-07-31",
-  "fcistar_last": -0.699326,
-  "fcistar_forecast": -0.736338,
-  "fcistar_forecast_through": "2026-06-30",
-  "spf_target_quarter": "2026Q2",
+  "nowcast_through": "2026-08-03",
+  "fcistar_last": -0.845869,
+  "fcistar_forecast": -0.83772,
+  "fcistar_forecast_through": "2026-09-30",
+  "spf_target_quarter": "2026Q3",
   "spf_survey_quarter": "2026Q2"
 }

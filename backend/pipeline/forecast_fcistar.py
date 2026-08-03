@@ -101,6 +101,16 @@ def append_forecast_quarter(
     ts = quarter_end_timestamp(target_year, target_q)
     dec = quarter_decimal(target_year, target_q)
 
+    # A duplicate date_decimal would be silently mis-resolved downstream:
+    # find_decimal_idx() returns the FIRST match, so the appended row would be
+    # dropped from the estimation window and df.iloc[-1] would report an actual
+    # as if it were the forecast.
+    if bool(np.isclose(data_hlm["date_decimal"].to_numpy(), dec).any()):
+        raise RuntimeError(
+            f"{target_year}Q{target_q} is already in the panel -- refusing to append a "
+            "duplicate quarter as a forecast."
+        )
+
     gdp_prev = float(data_hlm["gdp_tot"].iloc[-1])
     gdp_new = gdp_prev + drgdp / 400.0  # SPF annualized % growth -> quarterly log change
 
@@ -198,13 +208,49 @@ def sensitivity_grid(data_hlm, covid_dummies, settings, theta, ty, tq, fc) -> di
     return grid
 
 
+def check_inputs_agree(settings: dict, data_hlm: pd.DataFrame) -> pd.Timestamp:
+    """
+    The forecast target is 'the quarter after the last estimated quarter'. Three
+    files have to agree on which quarter that is:
+
+        filter_settings.json last_quarter  the estimation's own sample end
+        forecast_inputs/data_hlm.csv       the panel we append the SPF quarter to
+        fcistar.csv                        the series the site actually plots
+
+    They are written by different jobs, so a disagreement means one of them is
+    stale -- and forecasting off a stale one is exactly how a superseded forecast
+    ends up on the site next to the actual estimate for the same quarter. Refuse
+    rather than publish a forecast we know is keyed to the wrong quarter.
+    """
+    last_q = pd.Timestamp(settings["last_quarter"])
+
+    panel_last = pd.Timestamp(data_hlm["date"].iloc[-1])
+    if panel_last != last_q:
+        raise RuntimeError(
+            f"forecast_inputs are inconsistent: filter_settings last_quarter={last_q.date()} "
+            f"but data_hlm.csv ends {panel_last.date()}. The SPF quarter is chained onto the "
+            "last panel row, so these must be the same quarter. Re-run the monthly estimation."
+        )
+
+    published = pd.read_csv(OUT_DIR / "fcistar.csv", parse_dates=["date"])
+    published_last = pd.Timestamp(published["date"].iloc[-1])
+    if published_last != last_q:
+        raise RuntimeError(
+            f"Stale inputs: fcistar.csv ends {published_last.date()} but the committed "
+            f"forecast_inputs end {last_q.date()}. Forecasting from the older vintage would "
+            f"target a quarter that is already estimated. Re-run the monthly estimation "
+            "(assemble_data.py + estimate_CCS_struct.py) before the forecast."
+        )
+    return last_q
+
+
 def main() -> None:
     settings = load_settings()
     theta = load_theta()
     data_hlm = pd.read_csv(FINPUTS / "data_hlm.csv", parse_dates=["date"])
     covid_dummies = pd.read_csv(FINPUTS / "covid_dummies.csv", parse_dates=["date"])
 
-    last_q = pd.Timestamp(settings["last_quarter"])
+    last_q = check_inputs_agree(settings, data_hlm)
     ly, lq = last_q.year, (last_q.month - 1) // 3 + 1
     ty, tq = next_quarter(ly, lq)
     target_label = f"{ty}Q{tq}"

@@ -65,6 +65,10 @@ function parseCSV(text) {
 }
 // "2026Q2" -> "2026 Q2"
 function spaceQuarter(label) { return label ? label.replace('Q', ' Q') : label; }
+// Absolute quarter index of an ISO date, for "exactly one quarter after" tests.
+function quarterIndex(iso) {
+  return parseInt(iso.slice(0, 4), 10) * 4 + Math.ceil(parseInt(iso.slice(5, 7), 10) / 3) - 1;
+}
 
 
 /* ---------------- DATE FORMATTERS ---------------- */
@@ -342,8 +346,14 @@ function initViewToggle() {
 /* ---------------- SUMMARY BOXES (quarter-end estimate) ---------------- */
 function fmtNum(v) { return (v < 0 ? '−' : '') + Math.abs(v).toFixed(2); }
 function initSummary() {
-  if (!FC) return;   // no forecast -> leave the cards hidden
-  const fci = FCI_AT_FC, fcistar = FC.fcistar, gap = fci - fcistar;   // all at quarter-end
+  // With a forecast: FCI/FCI*/gap at the forecast quarter-end. Without one (the
+  // forecast is missing or superseded by the actual estimate): the last ACTUAL
+  // quarter, straight from fcistar.csv. Never leave the cards showing a
+  // superseded forecast next to an actual estimate for the same quarter.
+  const lastQ = Q[Q.length - 1];
+  const fci     = FC ? FCI_AT_FC : lastQ.fci;
+  const fcistar = FC ? FC.fcistar : lastQ.fcistar;
+  const gap     = fci - fcistar;
   document.getElementById('card-fci').textContent     = fmtNum(fci);
   document.getElementById('card-fcistar').textContent = fmtNum(fcistar);
   const gapEl = document.getElementById('card-gap');
@@ -351,7 +361,14 @@ function initSummary() {
   gapEl.classList.add(gap < 0 ? 'gap-loose' : 'gap-tight');
   document.getElementById('card-gap-sub').textContent =
     gap < 0 ? 'looser than neutral' : (gap > 0 ? 'tighter than neutral' : 'at neutral');
-  document.getElementById('summary-quarter').textContent = spaceQuarter(FC.target_quarter);
+  document.getElementById('summary-quarter').textContent =
+    FC ? spaceQuarter(FC.target_quarter) : formatQuarter(lastQ.date);
+  // Sub-labels and the sensitivity link describe the FORECAST; relabel / hide
+  // them when the cards are showing the actual estimated quarter instead.
+  document.getElementById('card-fci-sub').textContent     = FC ? 'nowcast → quarter-end' : 'quarter average';
+  document.getElementById('card-fcistar-sub').textContent = FC ? 'forecast' : 'estimate';
+  const linkEl = document.getElementById('summary-link');
+  if (linkEl) linkEl.hidden = !FC;
   document.getElementById('summary-cards').hidden = false;
 }
 
@@ -397,12 +414,33 @@ Promise.all([
   if (nowcastEl && meta.nowcast_through) nowcastEl.textContent = formatLongDate(meta.nowcast_through);
 
   Q  = parseCSV(csvText);
-  NC = parseCSV(ncText);
+  const lastQDate = Q[Q.length - 1].date;   // last quarter with an ACTUAL FCI* estimate
+
+  // The monthly estimation and the daily nowcast are separate cron jobs, so the
+  // published files can briefly disagree about where the estimated sample ends.
+  // Everything below the quarterly series is "past the last estimate" by
+  // construction: drop any monthly/daily row the quarterly series already covers,
+  // otherwise the chart x-values run backwards and the line doubles back on itself.
+  const ncAll = parseCSV(ncText);
+  NC = ncAll.filter(d => d.date > lastQDate);
+  if (NC.length !== ncAll.length) {
+    console.warn(`fci_nowcast.csv: dropped ${ncAll.length - NC.length} row(s) at or before the `
+      + `last estimated quarter (${lastQDate}) — the nowcast file is stale relative to fcistar.csv.`);
+  }
   const comp = parseCSV(compText);
-  COMP_SOLID = comp.filter(d => d.kind !== 'nowcast');
-  COMP_NOW   = comp.filter(d => d.kind === 'nowcast');
+  COMP_SOLID = comp.filter(d => d.kind !== 'nowcast' && (d.kind === 'quarter' || d.date > lastQDate));
+  COMP_NOW   = comp.filter(d => d.kind === 'nowcast' && d.date > lastQDate);
+
+  // The FCI* forecast is only meaningful for the quarter immediately after the
+  // last estimate. Once the actual estimate for that quarter prints, the forecast
+  // is superseded — never draw it alongside (or behind) the actual.
   const fcRows = fcText ? parseCSV(fcText) : [];
   FC = (fcRows.length && isFinite(fcRows[fcRows.length - 1].fcistar)) ? fcRows[fcRows.length - 1] : null;
+  if (FC && quarterIndex(FC.date) !== quarterIndex(lastQDate) + 1) {
+    console.warn(`fcistar_forecast.csv targets ${FC.target_quarter} but the last estimated quarter `
+      + `is ${lastQDate} — the forecast is stale/superseded, suppressing it.`);
+    FC = null;
+  }
 
   initForecast();
   computeFciAtFc();

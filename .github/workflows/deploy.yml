@@ -56,12 +56,21 @@ jobs:
           cp backend/refs/FCIstarPublic.pdf _site/
 
           # Copy data files into a data/ subfolder
+          # Required: the site cannot render without these.
           cp backend/data/output/fcistar.csv             _site/data/
           cp backend/data/output/fci_nowcast.csv         _site/data/
           cp backend/data/output/fci_components.csv      _site/data/
-          cp backend/data/output/fcistar_forecast.csv    _site/data/
-          cp backend/data/output/fcistar_sensitivity.json _site/data/
           cp backend/data/output/metadata.json           _site/data/
+
+          # Optional: build_fci_nowcast.py removes these when the FCI* forecast has
+          # been superseded by the actual estimate for that quarter, so they can
+          # legitimately be absent. The frontend degrades gracefully (no forecast
+          # line, cards fall back to the last actual quarter) -- an unconditional
+          # cp here would instead fail the whole deploy.
+          cp backend/data/output/fcistar_forecast.csv    _site/data/ 2>/dev/null \
+            || echo "no fcistar_forecast.csv - deploying without the FCI* forecast"
+          cp backend/data/output/fcistar_sensitivity.json _site/data/ 2>/dev/null \
+            || echo "no fcistar_sensitivity.json - deploying without the sensitivity grid"
 
           # Rewrite data paths: local dev uses ../../backend/data/output/
           # production uses data/ (relative to site root)

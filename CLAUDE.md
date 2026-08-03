@@ -55,6 +55,14 @@ What's live on https://fcistar.org:
    quarter-end, so the boxes are exactly the right edge of the charts. See the "DESIGN DECISION"
    section for why we report the quarter-end forecast (not the interpolated daily value or the
    quarter-average), and the gap-interpolation note.
+   **Past-quarter branch (2026-07-27):** when the forecast quarter-end is already in the past
+   (e.g. Q2 ended June 30 but Q2 GDP isn't released until late July), the FCI dot and summary
+   boxes use the **actual nowcast value at the quarter-end date** (looked up from the nowcast
+   series) instead of the latest nowcast value carried flat. This makes the light blue dot sit on
+   the dotted nowcast line rather than jumping to a future date's value. Once the monthly
+   estimation advances the sample past that quarter, the forecast shifts to the next quarter
+   (in the future) and the normal random-walk behavior resumes. See `computeFciAtFc()` in
+   `main.js`.
 4. **Sensitivity page** (`sensitivity.html`, linked from the summary cards): a 3×3 heatmap of
    FCI\* over the SPF 25/50/75 percentiles of GDP growth × core PCE. See the "Sensitivity grid"
    paragraph below.
@@ -76,6 +84,48 @@ added this after a monthly run wiped the nowcast fields.
 `setup-python@v6` (Node 24) across workflows; `metadata.json` merge in both crons.
 
 **Repo secret `FRED_API_KEY`** is set. Used by both the monthly-update and daily-nowcast workflows.
+
+### THE CROSS-CRON INVARIANT (2026-08-03 — read this before touching either workflow)
+
+**The forecast quarter must always be exactly one quarter past the last estimated quarter, in
+every published file at once.** The two crons own different files, and the monthly one invalidates
+everything the daily one owns:
+
+| owner | files |
+|---|---|
+| monthly (`update-data.yml`) | `fcistar.csv`, `forecast_inputs/`, `theta_opt3.json`, vintages |
+| daily (`update-nowcast.yml`) | `fcistar_forecast.csv`, `fci_nowcast.csv`, `fci_components.csv`, `fcistar_sensitivity.json` |
+
+The monthly run used to commit and deploy on its own. On **2026-08-01** (a Saturday) it published
+the 2026Q2 actuals while the last daily run was Friday 07-31, so the site served, together:
+`fcistar.csv` with the actual 2026Q2 FCI\* = −0.8459; `fcistar_forecast.csv` still targeting
+**2026Q2** with the SPF forecast −0.7363; and `fci_nowcast.csv` whose monthly-official rows started
+after 2026**Q1** (Apr/May/Jun) — months the quarterly line already covered. Result: the FCI and FCI\*
+traces doubled back on themselves (non-monotonic x), the FCI\* dotted line stepped −0.85 → −0.74 at
+a single date (`interpFcistar` had t0 == t1), and the summary cards reported the superseded forecast.
+Ricardo and Tomas caught it; Tomas traced the 0.11 discrepancy to 2.1% consensus GDP vs ~1.5% actual.
+
+Four independent guards now enforce the invariant — do not remove one assuming another covers it:
+
+1. `update-data.yml` re-runs the **entire daily chain** after estimation, so a monthly update is one
+   atomic, internally consistent commit. This is the actual fix; the rest are defense in depth.
+2. `main.js` refuses to draw a forecast that is not exactly one quarter past `fcistar.csv`'s last
+   row, drops nowcast rows the quarterly series already covers, and falls back to the last actual
+   quarter in the summary cards.
+3. `build_fci_nowcast.py` **deletes** a superseded `fcistar_forecast.csv` / `fcistar_sensitivity.json`.
+   Nulling the metadata keys is not enough — the frontend reads the CSV directly. `deploy.yml`
+   therefore copies those two files conditionally.
+4. `forecast_fcistar.py` requires `filter_settings.json`, `data_hlm.csv` and `fcistar.csv` to agree
+   on the last quarter, and refuses to append a quarter already in the panel (a duplicate
+   `date_decimal` would be mis-resolved by `find_decimal_idx`, which returns the FIRST match).
+
+**Also added 2026-08-03:** `write_outputs` refuses to publish when the new `sample_end` is EARLIER
+than the currently published one (this actually happened on 2026-05-01 via a stale FCI-G download;
+the cron was moved to 18:00 UTC to dodge it, which is a timing assumption, not a check). Same-day
+re-runs no longer die on the vintage `FileExistsError` — they archive as `_rN`, so repairing a
+failed run is possible. `get_fcig.py` now fails on stale core daily feeds (equity/DFF/DGS10) and
+warns on the rest: the trailing-window construction means a dead feed freezes its factor and keeps
+printing a number rather than producing NaNs.
 
 ---
 

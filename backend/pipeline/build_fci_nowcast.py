@@ -76,8 +76,16 @@ def main() -> None:
                     "spf_survey_quarter": str(frow["survey_quarter"]),
                 }
             else:
+                # The frontend reads fcistar_forecast.csv DIRECTLY, so nulling the
+                # metadata keys is not enough to stop a superseded forecast being
+                # drawn -- the file itself has to go. This happens when the monthly
+                # estimation advances past the quarter the forecast targeted; the
+                # forecast step regenerates the file for the new target quarter.
                 print(f"WARNING: forecast quarter {fq} is not one quarter past "
-                      f"{last_quarter.to_period('Q')}; holding FCI* flat for the gap.")
+                      f"{last_quarter.to_period('Q')}; holding FCI* flat for the gap "
+                      "and removing the superseded forecast artifacts.")
+                FORECAST.unlink()
+                (SITE_OUT / "fcistar_sensitivity.json").unlink(missing_ok=True)
 
     off = pd.read_csv(OFFICIAL, parse_dates=["date"]).sort_values("date")
     off_by_month = off.set_index(off["date"].dt.to_period("M"))
