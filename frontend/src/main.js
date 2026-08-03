@@ -47,6 +47,7 @@ let FC = null;                     // one-quarter-ahead FCI* forecast row (or nu
 let CHART_SERIES = {};             // line-mode y-range series per chart
 let END_STR = null;                // latest date across series
 let FCI_AT_FC = null;              // FCI value at forecast quarter-end (for dot + summary)
+let FC_PAST_QUARTER = false;       // forecast quarter has already ended (GDP not yet released)
 let RANGE = 'all';                 // current x-range selection
 let decompMode = false;            // Figure 1 view
 
@@ -134,6 +135,7 @@ function rwTailDates(afterStr, throughStr) {
 // so use it — the light blue dot lines up with the dotted nowcast line.
 function computeFciAtFc() {
   FCI_AT_FC = null;
+  FC_PAST_QUARTER = false;
   if (!FC) return;
   const nowc = NC.filter(d => d.kind === 'nowcast');
   const official = NC.filter(d => d.kind === 'official');
@@ -141,7 +143,10 @@ function computeFciAtFc() {
   const lastNow = nowc.length ? nowc[nowc.length - 1] : lastSolid;
   const fcTime = new Date(FC.date).getTime();
   const lastNowTime = new Date(lastNow.date).getTime();
-  if (lastNowTime <= fcTime) {
+  // This test IS the regime: the captions and the dot placement must agree about
+  // which case we are in, so both read it from here.
+  FC_PAST_QUARTER = lastNowTime > fcTime;
+  if (!FC_PAST_QUARTER) {
     FCI_AT_FC = lastNow.fci;
   } else {
     // Nowcast extends past the forecast quarter-end — look up actual value
@@ -343,6 +348,22 @@ function initViewToggle() {
 }
 
 
+/* ---------------- CAPTIONS THAT DEPEND ON THE FORECAST REGIME ---------------- */
+// The forecast quarter is the one AFTER the last estimate, and its GDP prints about a
+// month after it ends -- so for roughly one month in three the "next" quarter has already
+// ended (2026Q2 through July 2026). The nowcast then runs PAST the forecast quarter-end
+// and nothing is held flat, which several captions asserted unconditionally. Each such
+// caption carries a .regime-current and a .regime-past variant; swap them here.
+function setForecastRegimeNotes() {
+  const past = Boolean(FC) && FC_PAST_QUARTER;
+  document.querySelectorAll('.regime-current').forEach(el => { el.hidden = past; });
+  document.querySelectorAll('.regime-past').forEach(el => { el.hidden = !past; });
+  if (FC) {
+    document.querySelectorAll('.js-forecast-quarter')
+      .forEach(el => { el.textContent = spaceQuarter(FC.target_quarter); });
+  }
+}
+
 /* ---------------- SUMMARY BOXES (quarter-end estimate) ---------------- */
 function fmtNum(v) { return (v < 0 ? '−' : '') + Math.abs(v).toFixed(2); }
 function initSummary() {
@@ -365,7 +386,10 @@ function initSummary() {
     FC ? spaceQuarter(FC.target_quarter) : formatQuarter(lastQ.date);
   // Sub-labels and the sensitivity link describe the FORECAST; relabel / hide
   // them when the cards are showing the actual estimated quarter instead.
-  document.getElementById('card-fci-sub').textContent     = FC ? 'nowcast → quarter-end' : 'quarter average';
+  // The arrow means "carried flat to quarter-end" -- only true when the quarter-end is
+  // still ahead. Once it is past, the card shows the actual nowcast on that date.
+  document.getElementById('card-fci-sub').textContent =
+    FC ? (FC_PAST_QUARTER ? 'nowcast at quarter-end' : 'nowcast → quarter-end') : 'quarter average';
   document.getElementById('card-fcistar-sub').textContent = FC ? 'forecast' : 'estimate';
   const linkEl = document.getElementById('summary-link');
   if (linkEl) linkEl.hidden = !FC;
@@ -443,7 +467,8 @@ Promise.all([
   }
 
   initForecast();
-  computeFciAtFc();
+  computeFciAtFc();          // sets FC_PAST_QUARTER, which the next two both read
+  setForecastRegimeNotes();
   initSummary();
   drawCharts();
   applyRange(RANGE);   // set explicit y-ranges (incl. zero line on the gap charts) on first paint
